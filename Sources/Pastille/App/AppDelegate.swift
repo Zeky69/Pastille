@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var pillController: PillWindowController?
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
@@ -45,6 +45,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.image = NSImage(systemSymbolName: "capsule.fill", accessibilityDescription: "Pastille")
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Réglages…", action: #selector(openSettings), keyEquivalent: ","))
+        let launch = NSMenuItem(title: "Ouvrir au démarrage du Mac", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        launch.target = self
+        launchMenuItem = launch
+        menu.addItem(launch)
+        menu.delegate = self
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quitter Pastille", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         menu.items.forEach { if $0.action == #selector(openSettings) { $0.target = self } }
@@ -56,6 +61,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if self?.statusItem?.isVisible != Settings.showMenuBarIcon { self?.statusItem?.isVisible = Settings.showMenuBarIcon }
             }
         }
+    }
+
+    private var launchMenuItem: NSMenuItem?
+
+    /// Coche à jour à chaque ouverture du menu (l'état peut changer depuis Réglages Système).
+    func menuWillOpen(_ menu: NSMenu) {
+        launchMenuItem?.state = LaunchAtLogin.isEnabled ? .on : .off
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        LaunchAtLogin.set(!LaunchAtLogin.isEnabled)
+        if LaunchAtLogin.needsApproval { LaunchAtLogin.openLoginItemsSettings() }
     }
 
     @objc func openSettings() {

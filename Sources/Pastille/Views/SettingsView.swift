@@ -567,7 +567,15 @@ private struct GeneralSettings: View {
     @AppStorage(Settings.showMenuBarIconKey) private var showMenuBarIcon = true
     @AppStorage(Settings.tidyDesktopScreenshotsKey) private var tidyDesktop = true
     @State private var confirmReset = false
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @State private var launchNeedsApproval = LaunchAtLogin.needsApproval
+    @State private var launchError: String?
+
+    /// Relit l'état réel dans macOS (il peut changer depuis Réglages Système).
+    private func refreshLaunchState() {
+        launchAtLogin = LaunchAtLogin.isEnabled
+        launchNeedsApproval = LaunchAtLogin.needsApproval
+    }
 
     var body: some View {
         Form {
@@ -582,10 +590,28 @@ private struct GeneralSettings: View {
                 Toggle("Se cacher pendant les apps en plein écran", isOn: $hideInFullscreen)
                 Toggle("Glisser à deux doigts pour changer de page", isOn: $swipePages)
                 Toggle("Icône dans la barre des menus", isOn: $showMenuBarIcon)
-                Toggle("Lancer à l'ouverture de session", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, enabled in
-                        try? enabled ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
+                Toggle(isOn: Binding(
+                    get: { launchAtLogin },
+                    set: { enabled in
+                        launchError = LaunchAtLogin.set(enabled)
+                        refreshLaunchState()
                     }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Ouvrir Pastille au démarrage du Mac")
+                        if let launchError {
+                            Text("macOS a refusé : \(launchError)").font(.caption).foregroundStyle(.red)
+                        } else if launchNeedsApproval {
+                            HStack(spacing: 6) {
+                                Text("À valider dans les Éléments de connexion de macOS.")
+                                    .font(.caption).foregroundStyle(.orange)
+                                Button("Ouvrir") { LaunchAtLogin.openLoginItemsSettings() }
+                                    .controlSize(.small)
+                            }
+                        }
+                    }
+                }
+                .onAppear { refreshLaunchState() }
             }
             Section("Captures d'écran") {
                 LabeledContent("Dossier") {
