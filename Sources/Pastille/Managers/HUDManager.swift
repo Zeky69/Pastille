@@ -4,10 +4,16 @@ import CoreAudio
 
 enum HUDKind: Equatable { case volume, brightness }
 
+/// Où part le son : l'icône du volume change selon la sortie.
+enum AudioOutput: Equatable {
+    case speaker, headphones, airpods, airpodsPro, airpodsMax
+}
+
 struct HUDValue: Equatable {
     var kind: HUDKind
     var level: Float
     var muted: Bool = false
+    var output: AudioOutput = .speaker
 }
 
 /// Affiche le volume et la luminosité quand l'utilisateur les change.
@@ -43,7 +49,7 @@ final class HUDManager: ObservableObject {
 
     private func showVolume() {
         guard let volume = Self.volume(of: outputDevice) else { return }
-        show(HUDValue(kind: .volume, level: volume, muted: Self.isMuted(outputDevice)))
+        show(HUDValue(kind: .volume, level: volume, muted: Self.isMuted(outputDevice), output: Self.output(of: outputDevice)))
     }
 
     private func showBrightness() {
@@ -231,6 +237,51 @@ final class HUDManager: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Casque Bluetooth (AirPods reconnus par leur nom), casque filaire, ou haut-parleurs.
+    nonisolated private static func output(of device: AudioDeviceID) -> AudioOutput {
+        var transport = UInt32(0)
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectGetPropertyData(device, &address, 0, nil, &size, &transport)
+
+        if transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE {
+            let name = deviceName(device).lowercased()
+            if name.contains("airpods max") { return .airpodsMax }
+            if name.contains("airpods pro") { return .airpodsPro }
+            if name.contains("airpods") { return .airpods }
+            return .headphones
+        }
+        // Prise casque du Mac : même appareil, mais la source de données passe à « casque » ('hdpn').
+        var source = UInt32(0)
+        size = UInt32(MemoryLayout<UInt32>.size)
+        address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDataSource,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        if AudioObjectGetPropertyData(device, &address, 0, nil, &size, &source) == noErr, source == 0x6864_706E {
+            return .headphones
+        }
+        return .speaker
+    }
+
+    nonisolated private static func deviceName(_ device: AudioDeviceID) -> String {
+        var name: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioObjectPropertyName,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, &name) == noErr,
+              let value = name?.takeRetainedValue() else { return "" }
+        return value as String
     }
 
     nonisolated private static func defaultOutputDevice() -> AudioDeviceID {

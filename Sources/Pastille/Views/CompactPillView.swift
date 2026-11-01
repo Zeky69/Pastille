@@ -171,6 +171,7 @@ struct CompactPillView: View {
         case .download:
             DownloadRing(state: downloads.state)
                 .frame(width: 16, height: 16)
+                .help(downloads.state == .finished ? "Ouvrir le fichier (⌥ : le montrer dans le Finder)" : "")
         case .code:
             if let code = codes.current {
                 Text(code.code)
@@ -479,6 +480,14 @@ extension HUDValue {
         case .brightness:
             return level < 0.5 ? "sun.min.fill" : "sun.max.fill"
         case .volume:
+            // Casque ou AirPods : leur icône (la barre montre le niveau, vide si coupé).
+            switch output {
+            case .headphones: return "headphones"
+            case .airpods: return "airpods"
+            case .airpodsPro: return "airpodspro"
+            case .airpodsMax: return "airpodsmax"
+            case .speaker: break
+            }
             if muted || level == 0 { return "speaker.slash.fill" }
             if level < 0.33 { return "speaker.wave.1.fill" }
             if level < 0.66 { return "speaker.wave.2.fill" }

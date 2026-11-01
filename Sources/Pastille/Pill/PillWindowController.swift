@@ -41,6 +41,8 @@ final class PillWindowController {
         hosting.sizingOptions = []
         panel.contentView = hosting
         panel.ignoresMouseEvents = true
+        // Mouvements de souris aussi reçus au-dessus de la pastille quand elle capte les clics.
+        panel.acceptsMouseMovedEvents = true
 
         reposition()
         panel.orderFrontRegardless()
@@ -257,11 +259,27 @@ final class PillWindowController {
     private func handle(_ event: NSEvent) {
         let location = NSEvent.mouseLocation
         let inside = hotRect().contains(location)
+        // Coche verte d'un téléchargement terminé : elle se clique au lieu d'ouvrir la pastille.
+        let downloadClickable = !viewModel.isExpanded && viewModel.liveActivity == .download
+            && DownloadManager.shared.state == .finished
 
         if event.type == .leftMouseDown {
-            if !viewModel.isExpanded, inside { expand() }
+            if downloadClickable, inside {
+                DownloadManager.shared.openFinished(reveal: event.modifierFlags.contains(.option))
+                panel.ignoresMouseEvents = true
+            } else if !viewModel.isExpanded, inside {
+                expand()
+            }
             return
         }
+
+        if downloadClickable {
+            // On capte le clic (sinon il passerait à la barre des menus dessous), sans ouvrir au survol.
+            panel.ignoresMouseEvents = !inside
+            DownloadManager.shared.setFinishedHovered(inside)
+            return
+        }
+        if !viewModel.isExpanded, !panel.ignoresMouseEvents, !inside { panel.ignoresMouseEvents = true }
 
         if inside {
             collapseWork?.cancel()

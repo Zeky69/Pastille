@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 /// Téléchargements en cours dans ~/Téléchargements.
 /// Les navigateurs publient la progression de leurs fichiers pour le Finder (NSProgress) : on s'y abonne.
@@ -15,6 +15,8 @@ final class DownloadManager: ObservableObject {
     }
 
     @Published private(set) var state: State = .idle
+    /// Fichier qui vient d'arriver, ouvert d'un clic sur la coche verte.
+    private(set) var finishedFile: URL?
 
     private let folder = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Downloads")
     private static let partialExtensions: Set<String> = ["crdownload", "download", "part", "partial"]
@@ -99,11 +101,56 @@ final class DownloadManager: ObservableObject {
         poll = nil
     }
 
-    /// Coche « terminé » pendant 2,5 s, puis plus rien.
+    /// Coche « terminé » pendant 4 s (le temps de cliquer dessus), puis plus rien.
     private func finish() {
+        finishedFile = newestDownload()
         state = .finished
+        scheduleIdle(after: 4)
+    }
+
+    private func scheduleIdle(after delay: TimeInterval) {
+        finishWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.state = .idle }
         finishWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    /// Tant que la souris est sur la coche, elle reste affichée ; elle part 1,5 s après.
+    func setFinishedHovered(_ hovered: Bool) {
+        guard state == .finished else { return }
+        if hovered {
+            finishWork?.cancel()
+        } else {
+            scheduleIdle(after: 1.5)
+        }
+    }
+
+    /// Clic sur la coche : ouvre le fichier (⌥ : le montre dans le Finder).
+    func openFinished(reveal: Bool) {
+        guard let file = finishedFile, FileManager.default.fileExists(atPath: file.path) else {
+            NSWorkspace.shared.open(folder)
+            return
+        }
+        if reveal {
+            NSWorkspace.shared.activateFileViewerSelecting([file])
+        } else {
+            NSWorkspace.shared.open(file)
+        }
+        finishWork?.cancel()
+        state = .idle
+    }
+
+    /// Le fichier le plus récemment arrivé dans Téléchargements (hors fichiers temporaires), s'il date de moins de 2 min.
+    private func newestDownload() -> URL? {
+        let keys: [URLResourceKey] = [.addedToDirectoryDateKey, .creationDateKey]
+        let items = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])) ?? []
+        func date(_ url: URL) -> Date {
+            let values = try? url.resourceValues(forKeys: Set(keys))
+            return values?.addedToDirectoryDate ?? values?.creationDate ?? .distantPast
+        }
+        return items
+            .filter { !Self.partialExtensions.contains($0.pathExtension.lowercased()) }
+            .max { date($0) < date($1) }
+            .flatMap { Date().timeIntervalSince(date($0)) < 120 ? $0 : nil }
     }
 }
