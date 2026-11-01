@@ -57,7 +57,8 @@ final class PillWindowController {
         for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
-                    for delay in [0.1, 0.8, 1.6] {
+                    // Après le glissement de macOS vers l'espace plein écran, pour que le repli se voie.
+                    for delay in [0.6, 1.2, 2.0] {
                         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { self?.checkFullscreen() }
                     }
                 }

@@ -25,6 +25,7 @@ struct MusicPlayerView: View {
         HStack(spacing: 14) {
             ArtworkView(image: music.artwork, cornerRadius: 12)
                 .frame(width: 96, height: 96)
+                .overlay(alignment: .bottomTrailing) { SourceBadge(size: 22).offset(x: 5, y: 5) }
                 .shadow(color: accent.opacity(0.35), radius: 10)
             VStack(alignment: .leading, spacing: 6) {
                 // Sans lecture : pas de texte, juste la place réservée, une barre vide et les boutons.
@@ -48,6 +49,7 @@ struct MusicPlayerView: View {
             HStack(spacing: 16) {
                 ArtworkView(image: music.artwork, cornerRadius: 14)
                     .frame(width: geo.size.height, height: geo.size.height)
+                    .overlay(alignment: .bottomTrailing) { SourceBadge(size: 26).offset(x: 6, y: 6) }
                     .shadow(color: accent.opacity(0.45), radius: 14)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(music.track?.title ?? " ")
@@ -80,6 +82,7 @@ struct MusicPlayerView: View {
             HStack(spacing: 10) {
                 ArtworkView(image: music.artwork, cornerRadius: 7)
                     .frame(width: 38, height: 38)
+                    .overlay(alignment: .bottomTrailing) { SourceBadge(size: 15).offset(x: 4, y: 4) }
                 titles(titleSize: 13, artistSize: 11)
                 Spacer(minLength: 6)
                 visualizer
@@ -99,6 +102,7 @@ struct MusicPlayerView: View {
             HStack(spacing: 14) {
                 ArtworkView(image: music.artwork, cornerRadius: 10)
                     .frame(width: 70, height: 70)
+                    .overlay(alignment: .bottomTrailing) { SourceBadge(size: 20).offset(x: 5, y: 5) }
                     .shadow(color: .black.opacity(0.5), radius: 12, y: 4)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(music.track?.title ?? " ")
@@ -168,6 +172,23 @@ struct MusicPlayerView: View {
         .frame(maxWidth: .infinity)
         .disabled(music.track == nil)
         .opacity(music.track == nil ? 0.4 : 1)
+    }
+}
+
+/// Icône de l'app qui joue le son (Brave pour YouTube, Spotify, Musique…), en coin de pochette.
+private struct SourceBadge: View {
+    let size: CGFloat
+    @ObservedObject private var music = MusicManager.shared
+
+    var body: some View {
+        if music.track != nil, let source = music.source, let icon = source.icon {
+            Image(nsImage: icon)
+                .resizable()
+                .frame(width: size, height: size)
+                .shadow(color: .black.opacity(0.5), radius: 3, y: 1)
+                .help(source.name)
+                .transition(.scale.combined(with: .opacity))
+        }
     }
 }
 
@@ -302,47 +323,87 @@ private struct ProgressBar: View {
     }
 }
 
+/// Pochette recadrée au centre pour remplir exactement le cadre donné, quel que soit son format
+/// (une miniature de vidéo 16:9 devient un carré, sans déborder).
 struct ArtworkView: View {
     let image: NSImage?
     let cornerRadius: CGFloat
 
     var body: some View {
-        ZStack {
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(.white.opacity(0.1))
+        // Le cadre vient du parent ; l'image remplit ce cadre et ce qui dépasse est coupé.
+        Color.white.opacity(image == nil ? 0.1 : 0)
+            .overlay {
+                if let image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                }
             }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
 
-/// Faux spectre animé, comme sur iOS.
-struct AudioVisualizer: View {
+/// Faux spectre animé, comme sur iOS. Les barres sont des couches Core Animation qui bougent toutes
+/// seules (le système les anime) : la vue SwiftUI n'est jamais recalculée pendant la lecture.
+struct AudioVisualizer: NSViewRepresentable {
     let isPlaying: Bool
     let color: Color
-    private let bars = 4
 
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 0.18, paused: !isPlaying)) { context in
-            let tick = context.date.timeIntervalSinceReferenceDate
-            HStack(alignment: .center, spacing: 2) {
-                ForEach(0..<bars, id: \.self) { i in
-                    Capsule()
-                        .fill(color)
-                        .frame(height: isPlaying ? height(i, tick) : 3)
-                }
-            }
-            .animation(.easeInOut(duration: 0.18), value: tick)
-        }
+    func makeNSView(context: Context) -> VisualizerView { VisualizerView() }
+
+    func updateNSView(_ view: VisualizerView, context: Context) {
+        view.update(isPlaying: isPlaying, color: NSColor(color))
+    }
+}
+
+final class VisualizerView: NSView {
+    private let bars = (0..<4).map { _ in CALayer() }
+    private var isPlaying = false
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        bars.forEach { layer?.addSublayer($0) }
     }
 
-    private func height(_ i: Int, _ t: Double) -> CGFloat {
-        let v = abs(sin(t * (2.3 + Double(i) * 0.9) + Double(i) * 1.7))
-        return 3 + CGFloat(v) * 9
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layout() {
+        super.layout()
+        let spacing: CGFloat = 2
+        let width = (bounds.width - spacing * CGFloat(bars.count - 1)) / CGFloat(bars.count)
+        for (index, bar) in bars.enumerated() {
+            bar.bounds = CGRect(x: 0, y: 0, width: width, height: bounds.height)
+            bar.position = CGPoint(x: CGFloat(index) * (width + spacing) + width / 2, y: bounds.midY)
+            bar.cornerRadius = width / 2
+        }
+        restartAnimations()
+    }
+
+    func update(isPlaying: Bool, color: NSColor) {
+        bars.forEach { $0.backgroundColor = color.cgColor }
+        guard isPlaying != self.isPlaying else { return }
+        self.isPlaying = isPlaying
+        restartAnimations()
+    }
+
+    /// Chaque barre monte et descend à son propre rythme ; à l'arrêt, elles se posent à 3 pt.
+    private func restartAnimations() {
+        let rest = bounds.height > 0 ? 3 / bounds.height : 0.25
+        for (index, bar) in bars.enumerated() {
+            bar.removeAllAnimations()
+            guard isPlaying else {
+                bar.transform = CATransform3DMakeScale(1, rest, 1)
+                continue
+            }
+            bar.transform = CATransform3DIdentity
+            let animation = CAKeyframeAnimation(keyPath: "transform.scale.y")
+            animation.values = [rest, 1, 0.45, 0.85, rest + 0.1, 0.7, rest]
+            animation.duration = [0.9, 1.15, 0.8, 1.05][index]
+            animation.timeOffset = Double(index) * 0.37
+            animation.repeatCount = .infinity
+            animation.calculationMode = .cubic
+            bar.add(animation, forKey: "dance")
+        }
     }
 }

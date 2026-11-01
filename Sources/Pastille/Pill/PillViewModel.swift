@@ -89,10 +89,12 @@ final class PillViewModel: ObservableObject {
     @Published private(set) var cutoutSize = CGSize(width: 185, height: 32)
     @Published private(set) var liveActivity: LiveActivity = .none
     /// Une app est en plein écran sur l'écran de la pastille (vidéo, jeu, présentation).
-    @Published var fullscreenAppActive = false
+    @Published var fullscreenAppActive = false {
+        didSet { if fullscreenAppActive != oldValue { refreshLiveActivity() } }
+    }
 
-    /// En plein écran, la pastille fermée s'efface ; le volume et la luminosité restent visibles,
-    /// et elle réapparaît dès qu'on l'ouvre en approchant la souris.
+    /// En plein écran, la pastille fermée se replie dans l'encoche puis s'efface ; le volume et la
+    /// luminosité restent visibles, et elle réapparaît dès qu'on l'ouvre en approchant la souris.
     var isConcealed: Bool {
         fullscreenAppActive && Settings.hideInFullscreen && !isExpanded && liveActivity != .hud
     }
@@ -335,7 +337,7 @@ final class PillViewModel: ObservableObject {
 
     private func refreshLiveActivity() {
         let music = MusicManager.shared
-        let new: LiveActivity
+        var new: LiveActivity
         if HUDManager.shared.current != nil {
             new = .hud
         } else if let moment {
@@ -350,6 +352,10 @@ final class PillViewModel: ObservableObject {
         } else if Settings.musicLiveActivity, music.isPlaying, music.track != nil {
             new = .music
         } else {
+            new = .none
+        }
+        // Plein écran : l'activité se replie dans l'encoche (même ressort qu'une fin d'activité).
+        if fullscreenAppActive, Settings.hideInFullscreen, new != .hud {
             new = .none
         }
         if new != liveActivity {

@@ -35,8 +35,11 @@ struct PillRootView: View {
                 }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // On attend que la pastille se soit repliée dans l'encoche avant de l'effacer ; au retour, elle
+        // réapparaît tout de suite pour pouvoir se déplier.
         .opacity(viewModel.isConcealed ? 0 : 1)
-        .animation(.easeInOut(duration: 0.3), value: viewModel.isConcealed)
+        .animation(viewModel.isConcealed ? .easeOut(duration: 0.25).delay(0.45) : .easeIn(duration: 0.1),
+                   value: viewModel.isConcealed)
         .preferredColorScheme(.dark)
     }
 

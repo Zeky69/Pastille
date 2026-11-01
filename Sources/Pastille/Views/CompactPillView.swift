@@ -12,6 +12,9 @@ struct CompactPillView: View {
     @ObservedObject private var codes = VerificationCodeManager.shared
     @ObservedObject private var bluetooth = BluetoothManager.shared
     @AppStorage(Appearance.accentKey) private var accentRaw = Appearance.AccentChoice.artwork.rawValue
+    /// Activité dessinée. Quand elle se termine, on garde son contenu le temps que les côtés
+    /// se replient : il glisse alors sous l'encoche au lieu de s'effacer d'un coup.
+    @State private var shown: LiveActivity = .none
 
     private var h: CGFloat { viewModel.cutoutSize.height }
 
@@ -31,13 +34,21 @@ struct CompactPillView: View {
             trailing
                 .frame(width: viewModel.sideWidth, height: h)
         }
-        .opacity(viewModel.liveActivity == .none ? 0 : 1)
-        .blur(radius: viewModel.liveActivity == .none ? 6 : 0)
+        .opacity(shown == .none ? 0 : 1)
+        .onChange(of: viewModel.liveActivity, initial: true) { _, activity in
+            guard activity == .none else {
+                shown = activity
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                if viewModel.liveActivity == .none { shown = .none }
+            }
+        }
     }
 
     @ViewBuilder
     private var leading: some View {
-        switch viewModel.liveActivity {
+        switch shown {
         case .music:
             ArtworkView(image: music.artwork, cornerRadius: 5)
                 .frame(width: h - 10, height: h - 10)
@@ -122,7 +133,7 @@ struct CompactPillView: View {
 
     @ViewBuilder
     private var trailing: some View {
-        switch viewModel.liveActivity {
+        switch shown {
         case .music:
             AudioVisualizer(isPlaying: music.isPlaying, color: Appearance.AccentChoice.resolve(accentRaw, artwork: music.accentColor))
                 .frame(width: 18, height: 12)
