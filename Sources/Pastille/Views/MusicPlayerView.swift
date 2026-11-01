@@ -25,7 +25,7 @@ struct MusicPlayerView: View {
         HStack(spacing: 14) {
             ArtworkView(image: music.artwork, cornerRadius: 12)
                 .frame(width: 96, height: 96)
-                .overlay(alignment: .bottomTrailing) { SourceBadge(size: 22).offset(x: 5, y: 5) }
+                .overlay(alignment: .bottomTrailing) { SourceBadge(size: 22) }
                 .shadow(color: accent.opacity(0.35), radius: 10)
             VStack(alignment: .leading, spacing: 6) {
                 // Sans lecture : pas de texte, juste la place réservée, une barre vide et les boutons.
@@ -49,7 +49,7 @@ struct MusicPlayerView: View {
             HStack(spacing: 16) {
                 ArtworkView(image: music.artwork, cornerRadius: 14)
                     .frame(width: geo.size.height, height: geo.size.height)
-                    .overlay(alignment: .bottomTrailing) { SourceBadge(size: 26).offset(x: 6, y: 6) }
+                    .overlay(alignment: .bottomTrailing) { SourceBadge(size: 26) }
                     .shadow(color: accent.opacity(0.45), radius: 14)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(music.track?.title ?? " ")
@@ -82,7 +82,7 @@ struct MusicPlayerView: View {
             HStack(spacing: 10) {
                 ArtworkView(image: music.artwork, cornerRadius: 7)
                     .frame(width: 38, height: 38)
-                    .overlay(alignment: .bottomTrailing) { SourceBadge(size: 15).offset(x: 4, y: 4) }
+                    .overlay(alignment: .bottomTrailing) { SourceBadge(size: 15) }
                 titles(titleSize: 13, artistSize: 11)
                 Spacer(minLength: 6)
                 visualizer
@@ -102,7 +102,7 @@ struct MusicPlayerView: View {
             HStack(spacing: 14) {
                 ArtworkView(image: music.artwork, cornerRadius: 10)
                     .frame(width: 70, height: 70)
-                    .overlay(alignment: .bottomTrailing) { SourceBadge(size: 20).offset(x: 5, y: 5) }
+                    .overlay(alignment: .bottomTrailing) { SourceBadge(size: 20) }
                     .shadow(color: .black.opacity(0.5), radius: 12, y: 4)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(music.track?.title ?? " ")
@@ -185,6 +185,9 @@ private struct SourceBadge: View {
             Image(nsImage: icon)
                 .resizable()
                 .frame(width: size, height: size)
+                // Déborde un peu à droite de la pochette, mais jamais en dessous : le bas de la page
+                // est coupé net (transition entre les pages), le badge le serait aussi.
+                .offset(x: size * 0.25, y: -2)
                 .shadow(color: .black.opacity(0.5), radius: 3, y: 1)
                 .help(source.name)
                 .transition(.scale.combined(with: .opacity))
