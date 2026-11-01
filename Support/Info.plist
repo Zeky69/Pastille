@@ -4,6 +4,7 @@
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>fr</string>
     <key>CFBundleExecutable</key><string>Pastille</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleIdentifier</key><string>com.macky.pastille</string>
     <key>CFBundleName</key><string>Pastille</string>
     <key>CFBundleDisplayName</key><string>Pastille</string>

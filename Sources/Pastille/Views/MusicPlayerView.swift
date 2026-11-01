@@ -24,6 +24,7 @@ struct MusicPlayerView: View {
     private var classic: some View {
         HStack(spacing: 14) {
             ArtworkView(image: music.artwork, cornerRadius: 12)
+                    .opensSource()
                 .frame(width: 96, height: 96)
                 .overlay(alignment: .bottomTrailing) { SourceBadge(size: 22) }
                 .shadow(color: accent.opacity(0.35), radius: 10)
@@ -48,6 +49,7 @@ struct MusicPlayerView: View {
         GeometryReader { geo in
             HStack(spacing: 16) {
                 ArtworkView(image: music.artwork, cornerRadius: 14)
+                    .opensSource()
                     .frame(width: geo.size.height, height: geo.size.height)
                     .overlay(alignment: .bottomTrailing) { SourceBadge(size: 26) }
                     .shadow(color: accent.opacity(0.45), radius: 14)
@@ -82,6 +84,7 @@ struct MusicPlayerView: View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
                 ArtworkView(image: music.artwork, cornerRadius: 7)
+                    .opensSource()
                     .frame(width: 38, height: 38)
                     .overlay(alignment: .bottomTrailing) { SourceBadge(size: 15) }
                 titles(titleSize: 13, artistSize: 11)
@@ -102,6 +105,7 @@ struct MusicPlayerView: View {
         VStack(spacing: 10) {
             HStack(spacing: 14) {
                 ArtworkView(image: music.artwork, cornerRadius: 10)
+                    .opensSource()
                     .frame(width: 70, height: 70)
                     .overlay(alignment: .bottomTrailing) { SourceBadge(size: 20) }
                     .shadow(color: .black.opacity(0.5), radius: 12, y: 4)
@@ -129,6 +133,7 @@ struct MusicPlayerView: View {
         GeometryReader { geo in
             HStack(spacing: 18) {
                 VinylDisc(image: music.artwork, isPlaying: music.isPlaying, accent: accent)
+                    .opensSource()
                     .frame(width: geo.size.height, height: geo.size.height)
                 VStack(alignment: .leading, spacing: 6) {
                     Spacer(minLength: 0)
@@ -174,6 +179,24 @@ struct MusicPlayerView: View {
         .frame(maxWidth: .infinity)
         .disabled(music.track == nil)
         .opacity(music.track == nil ? 0.4 : 1)
+    }
+}
+
+extension View {
+    /// Un clic ouvre l'app d'où vient le son (l'onglet YouTube pour un navigateur).
+    func opensSource() -> some View {
+        modifier(OpensSource())
+    }
+}
+
+private struct OpensSource: ViewModifier {
+    @ObservedObject private var music = MusicManager.shared
+
+    func body(content: Content) -> some View {
+        content
+            .contentShape(Rectangle())
+            .onTapGesture { music.openSource() }
+            .help(music.source.map { "Ouvrir dans \($0.name)" } ?? "")
     }
 }
 

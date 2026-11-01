@@ -94,6 +94,76 @@ final class MusicManager: ObservableObject {
         return min(max(value, 0), track.duration > 0 ? track.duration : value)
     }
 
+    // MARK: - Ouvrir l'app qui joue
+
+    /// Navigateurs dont on sait retrouver l'onglet qui joue (d'après son titre).
+    private static let chromiumBrowsers: Set<String> = [
+        "com.brave.Browser", "com.google.Chrome", "com.microsoft.edgemac", "company.thebrowser.Browser", "com.vivaldi.Vivaldi",
+    ]
+
+    /// Ouvre l'app d'où vient le son ; pour un navigateur, va directement sur l'onglet qui joue.
+    func openSource() {
+        guard let bundleID = source?.bundleID else { return }
+        let title = String((track?.title ?? "").prefix(40))
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let script: String?
+        if Self.chromiumBrowsers.contains(bundleID), !title.isEmpty {
+            script = """
+            tell application id "\(bundleID)"
+                repeat with w in windows
+                    set i to 0
+                    repeat with t in tabs of w
+                        set i to i + 1
+                        if title of t contains "\(title)" then
+                            set active tab index of w to i
+                            set index of w to 1
+                            exit repeat
+                        end if
+                    end repeat
+                end repeat
+                activate
+            end tell
+            """
+        } else if bundleID == "com.apple.Safari", !title.isEmpty {
+            script = """
+            tell application id "com.apple.Safari"
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        if name of t contains "\(title)" then
+                            set current tab of w to t
+                            set index of w to 1
+                            exit repeat
+                        end if
+                    end repeat
+                end repeat
+                activate
+            end tell
+            """
+        } else {
+            script = nil
+        }
+
+        guard let script else {
+            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+                NSWorkspace.shared.openApplication(at: url, configuration: .init())
+            }
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            var error: NSDictionary?
+            NSAppleScript(source: script)?.executeAndReturnError(&error)
+            // Refus d'automatisation ou onglet introuvable : on ouvre au moins l'app.
+            if error != nil {
+                DispatchQueue.main.async {
+                    if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+                        NSWorkspace.shared.openApplication(at: url, configuration: .init())
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Commandes (envoyées à l'app affichée)
 
     func playPause() {
