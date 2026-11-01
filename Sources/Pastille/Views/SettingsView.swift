@@ -379,12 +379,16 @@ private struct ActivitySettings: View {
     @AppStorage(Appearance.musicPriorityKey) private var musicPriority = true
     @AppStorage(Appearance.musicOtherAppsKey) private var musicOtherApps = true
     @AppStorage(Appearance.musicSourceBadgeKey) private var sourceBadge = true
+    @AppStorage(Appearance.timerDoneKey) private var timerDone = true
+    @AppStorage(Appearance.newTrackKey) private var newTrack = true
+    @AppStorage(Appearance.codesSenderKey) private var codesSender = true
 
     var body: some View {
         Form {
             Section {
                 row("music.note", .pink, "Musique en cours", "Pochette et spectre de part et d'autre de l'encoche.", $music)
                 row("timer", .orange, "Minuteur et chronomètre", "Ceux de l'app Horloge, en direct.", $clock)
+                row("bell.fill", .orange, "Minuteur terminé", "L'anneau clignote avec « Terminé » quand il arrive à zéro.", $timerDone)
                 row("arrow.down.circle.fill", .blue, "Téléchargements", "Anneau de progression puis coche verte.", $download)
                 row("key.fill", .green, "Codes de vérification", "Reçus par SMS, iMessage ou Mail.", $code)
                 row("speaker.wave.2.fill", .gray, "Volume et luminosité", "Remplace l'indicateur d'Apple (désactivé : celui d'Apple revient).", $hud)
@@ -399,6 +403,7 @@ private struct ActivitySettings: View {
                 row("music.quarternote.3", .pink, "Priorité à la musique", "Une vidéo ne s'affiche que si aucune musique ne joue.", $musicPriority)
                 row("play.rectangle.fill", .red, "Son des autres apps", "YouTube dans le navigateur, vidéos, podcasts… (coupé : Musique, Spotify, Deezer… seulement).", $musicOtherApps)
                 row("app.badge.fill", .gray, "Icône de l'app sur la pochette", "Pour savoir d'où vient le son.", $sourceBadge)
+                row("music.note.list", .purple, "Nouveau morceau", "Pochette et titre 2 secondes dans la pastille fermée quand la chanson change.", $newTrack)
             } header: {
                 Text("Musique")
             }
@@ -406,6 +411,7 @@ private struct ActivitySettings: View {
             Section {
                 row("message.fill", .green, "Messages", "SMS et iMessages reçus sur le Mac.", $codesMessages)
                 row("envelope.fill", .blue, "Mail", "Mails reçus dans l'app Mail.", $codesMail)
+                row("person.text.rectangle", .gray, "Nom du service", "« Instagram · 482913 » quand l'expéditeur est reconnaissable.", $codesSender)
             } header: {
                 Text("Où chercher les codes de vérification")
             }

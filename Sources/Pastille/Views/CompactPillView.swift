@@ -58,6 +58,19 @@ struct CompactPillView: View {
                 .foregroundStyle(.green)
         case .unplugged:
             UnpluggedIcon()
+        case .timerDone:
+            TimerDoneRing()
+                .frame(width: 15, height: 15)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 12)
+        case .newTrack:
+            if case .newTrack(_, let artwork) = viewModel.moment {
+                ArtworkView(image: artwork, cornerRadius: 5)
+                    .frame(width: h - 10, height: h - 10)
+                    .modifier(PopIn())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 10)
+            }
         case .charged:
             Image(systemName: "battery.100percent.bolt")
                 .font(.system(size: 15, weight: .semibold))
@@ -141,6 +154,27 @@ struct CompactPillView: View {
             BatteryIcon(level: battery.level, isCharging: true)
         case .unplugged:
             BatteryIcon(level: battery.level, isCharging: false)
+        case .timerDone:
+            Text("Terminé")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.orange)
+                .fixedSize()
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.trailing, 12)
+        case .newTrack:
+            if case .newTrack(let track, _) = viewModel.moment {
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text(track.title)
+                        .font(.system(size: 11, weight: .semibold))
+                    Text(track.artist)
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.trailing, 10)
+            }
         case .charged:
             Text("Chargé")
                 .font(.system(size: 12, weight: .semibold))
@@ -258,6 +292,24 @@ private struct ConnectedRing: View {
                 withAnimation(.easeOut(duration: 0.8).delay(0.15)) { filled = true }
             }
         }
+    }
+}
+
+// MARK: - Minuteur terminé
+
+/// Anneau orange plein qui pulse doucement, comme une sonnerie silencieuse.
+private struct TimerDoneRing: View {
+    @State private var pulse = false
+
+    var body: some View {
+        Circle()
+            .stroke(Color.orange, lineWidth: 2.5)
+            .overlay(Image(systemName: "bell.fill").font(.system(size: 7, weight: .bold)).foregroundStyle(.orange))
+            .scaleEffect(pulse ? 1.12 : 0.92)
+            .opacity(pulse ? 1 : 0.6)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) { pulse = true }
+            }
     }
 }
 

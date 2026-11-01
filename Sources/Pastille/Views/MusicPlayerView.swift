@@ -203,18 +203,18 @@ struct ImmersiveBackground: View {
 
     var body: some View {
         ZStack {
-            if let artwork = music.artwork {
-                Image(nsImage: artwork)
+            // Image déjà floutée (voir MusicManager.blurredArtwork) : rien à recalculer pendant les animations.
+            if let blurred = music.blurredArtwork {
+                Image(nsImage: blurred)
                     .resizable()
+                    .interpolation(.high)
                     .aspectRatio(contentMode: .fill)
-                    .blur(radius: 50)
-                    .saturation(1.4)
                     .opacity(0.7)
                     .transition(.opacity)
             }
             LinearGradient(colors: [.black.opacity(0.55), .black.opacity(0.15), .black.opacity(0.45)], startPoint: .top, endPoint: .bottom)
         }
-        .animation(.easeInOut(duration: 0.5), value: music.artwork)
+        .animation(.easeInOut(duration: 0.5), value: music.blurredArtwork)
         .allowsHitTesting(false)
     }
 }

@@ -21,6 +21,9 @@ enum Appearance {
     static let hudActivityKey = "activity.hud"
     static let batteryAlertKey = "activity.batteryAlert"
     static let deviceConnectedKey = "activity.deviceConnected"
+    static let timerDoneKey = "activity.timerDone"
+    static let newTrackKey = "activity.newTrack"
+    static let codesSenderKey = "codes.sender"
     static let powerKey = "activity.power"
     static let codesMessagesKey = "codes.messages"
     static let codesMailKey = "codes.mail"
@@ -47,6 +50,9 @@ enum Appearance {
             hudActivityKey: true,
             batteryAlertKey: true,
             deviceConnectedKey: true,
+            timerDoneKey: true,
+            newTrackKey: true,
+            codesSenderKey: true,
             powerKey: true,
             codesMessagesKey: true,
             codesMailKey: true,
@@ -313,6 +319,7 @@ enum Appearance {
         let defaults = UserDefaults.standard
         for key in [clockActivityKey, downloadActivityKey, codeActivityKey, hudActivityKey, batteryAlertKey,
                     deviceConnectedKey, powerKey, codesMessagesKey, codesMailKey,
+                    timerDoneKey, newTrackKey, codesSenderKey,
                     musicPriorityKey, musicOtherAppsKey, musicSourceBadgeKey, weatherUnitKey,
                     Settings.musicLiveActivityKey, Settings.showBatteryPercentKey] {
             defaults.removeObject(forKey: key)

@@ -1,4 +1,6 @@
 import AppKit
+import CoreImage
+import Combine
 import SwiftUI
 
 struct Track: Equatable {
@@ -36,6 +38,11 @@ final class MusicManager: ObservableObject {
     @Published private(set) var artwork: NSImage?
     @Published private(set) var accentColor: Color = .white
     @Published private(set) var source: AudioSource?
+    /// Pochette floutée une fois pour toutes (fond du style Immersif), au lieu d'un flou recalculé à chaque image.
+    @Published private(set) var blurredArtwork: NSImage?
+    /// Un autre morceau commence (pas au lancement de Pastille) : bref affichage du titre.
+    let trackChanged = PassthroughSubject<Track, Never>()
+    private let startedAt = Date()
 
     /// Apps considérées comme « musique » (prioritaires sur une vidéo ou un podcast).
     private static let musicApps: Set<String> = [
@@ -244,7 +251,11 @@ final class MusicManager: ObservableObject {
             album: info["album"] as? String ?? "",
             duration: (info["duration"] as? NSNumber)?.doubleValue ?? 0
         )
-        if newTrack != track { track = newTrack }
+        if newTrack != track {
+            let previous = track
+            track = newTrack
+            if previous != nil, Date().timeIntervalSince(startedAt) > 3 { pendingTrackAnnouncement = newTrack }
+        }
 
         rate = (info["rate"] as? NSNumber)?.doubleValue ?? 1
         let playing = (info["playing"] as? NSNumber)?.boolValue ?? (rate > 0)
@@ -261,12 +272,21 @@ final class MusicManager: ObservableObject {
         let newSource = (info["app"] as? String).map { AudioSource(name: $0, bundleID: info["bundle"] as? String) }
         if newSource != source { source = newSource }
         setArtwork(image)
+        // Annoncé une fois la pochette à jour, et seulement si le morceau joue.
+        if let announced = pendingTrackAnnouncement, playing {
+            pendingTrackAnnouncement = nil
+            trackChanged.send(announced)
+        }
     }
+
+    private var pendingTrackAnnouncement: Track?
 
     private func setArtwork(_ image: NSImage?) {
         guard image !== artwork else { return }
+        let blurred = image?.blurredBackground()
         withAnimation(.easeInOut(duration: 0.3)) {
             artwork = image
+            blurredArtwork = blurred
             accentColor = image?.averageColor.map(Color.init(nsColor:)) ?? .white
         }
     }
@@ -409,6 +429,21 @@ private final class LegacyPlayers {
 }
 
 extension NSImage {
+    /// Version très floue et plus saturée, réduite à 64 px : agrandie, elle reste lisse, et son calcul
+    /// ne coûte presque rien (une fois par pochette).
+    func blurredBackground() -> NSImage? {
+        guard let cg = cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        let input = CIImage(cgImage: cg)
+        let scale = 64 / max(input.extent.width, input.extent.height)
+        let small = input.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        let blurred = small.clampedToExtent()
+            .applyingGaussianBlur(sigma: 5)
+            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.4])
+            .cropped(to: small.extent)
+        guard let output = CIContext().createCGImage(blurred, from: blurred.extent) else { return nil }
+        return NSImage(cgImage: output, size: NSSize(width: output.width, height: output.height))
+    }
+
     /// Couleur moyenne (sert d'accent pour le visualiseur et la barre de progression).
     var averageColor: NSColor? {
         guard let cg = cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }

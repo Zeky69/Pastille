@@ -140,11 +140,19 @@ private struct CaffeineButton: View {
 private struct CodeOrWeatherView: View {
     @ObservedObject private var codes = VerificationCodeManager.shared
     @AppStorage(Appearance.showWeatherKey) private var showWeather = true
+    @AppStorage(Appearance.codesSenderKey) private var showSender = true
 
     var body: some View {
         if let code = codes.current {
             Button { codes.copy() } label: {
                 HStack(spacing: 5) {
+                    if showSender, let service = code.service {
+                        Text(service)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .lineLimit(1)
+                        Text("·").foregroundStyle(.white.opacity(0.4))
+                    }
                     Text(code.code)
                         .font(.system(size: 12, weight: .semibold).monospacedDigit())
                     Image(systemName: codes.copied ? "checkmark" : "doc.on.doc")

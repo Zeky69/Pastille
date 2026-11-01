@@ -22,6 +22,8 @@ enum Moment: Equatable {
     case lowBattery(Int)
     case deviceConnected(BluetoothDevice)
     case caffeine(Bool)
+    case timerDone
+    case newTrack(Track, NSImage?)
 
     var activity: LiveActivity {
         switch self {
@@ -31,6 +33,8 @@ enum Moment: Equatable {
         case .lowBattery: .lowBattery
         case .deviceConnected: .deviceConnected
         case .caffeine: .caffeine
+        case .timerDone: .timerDone
+        case .newTrack: .newTrack
         }
     }
 
@@ -40,6 +44,8 @@ enum Moment: Equatable {
         case .unplugged: 2.5
         case .charged, .lowBattery, .deviceConnected: 4
         case .caffeine: 2
+        case .timerDone: 5
+        case .newTrack: 2.5
         }
     }
 
@@ -47,7 +53,8 @@ enum Moment: Equatable {
     func replaces(_ other: Moment) -> Bool {
         switch (self, other) {
         case (.charging, .charging), (.charging, .unplugged), (.unplugged, .unplugged), (.unplugged, .charging),
-             (.charged, .charged), (.lowBattery, .lowBattery), (.caffeine, .caffeine):
+             (.charged, .charged), (.lowBattery, .lowBattery), (.caffeine, .caffeine),
+             (.timerDone, .timerDone), (.newTrack, .newTrack):
             true
         case let (.deviceConnected(a), .deviceConnected(b)):
             a.id == b.id
@@ -58,7 +65,7 @@ enum Moment: Equatable {
 }
 
 /// Activité affichée de part et d'autre de la pastille compacte (façon « Live Activity »).
-enum LiveActivity: Equatable { case none, music, charging, unplugged, charged, deviceConnected, lowBattery, timer, stopwatch, download, caffeine, code, hud }
+enum LiveActivity: Equatable { case none, music, charging, unplugged, charged, deviceConnected, lowBattery, timer, timerDone, stopwatch, newTrack, download, caffeine, code, hud }
 
 @MainActor
 final class PillViewModel: ObservableObject {
@@ -222,6 +229,21 @@ final class PillViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        TimerManager.shared.finished
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                if Appearance.bool(Appearance.timerDoneKey) { self?.enqueue(.timerDone) }
+            }
+            .store(in: &cancellables)
+
+        MusicManager.shared.trackChanged
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] track in
+                guard Appearance.bool(Appearance.newTrackKey) else { return }
+                self?.enqueue(.newTrack(track, MusicManager.shared.artwork))
+            }
+            .store(in: &cancellables)
+
         CaffeineManager.shared.toggled
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isOn in self?.enqueue(.caffeine(isOn)) }
@@ -254,6 +276,8 @@ final class PillViewModel: ObservableObject {
         case .download: cutoutSize.height + 6
         case .caffeine: 58
         case .charged: 60
+        case .timerDone: 68
+        case .newTrack: 116
         case .deviceConnected: 96
         // Largeur du code (chiffres à ~7,4 pt) + marge extérieure, 2 pt de débord côté encoche.
         case .code: CGFloat(VerificationCodeManager.shared.current?.code.count ?? 6) * 7.4 + 10

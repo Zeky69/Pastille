@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 /// Minuteur en cours dans l'app Horloge.
@@ -43,6 +44,8 @@ final class TimerManager: ObservableObject {
     @Published private(set) var stopwatch: ClockStopwatch?
     /// Format du chronomètre (« m:ss,cc », « mm:ss,cc » ou « h:mm:ss,cc ») : fixe la largeur de la pastille.
     @Published private(set) var stopwatchDigits = 0
+    /// Un minuteur vient d'arriver à zéro (durée totale, pour l'affichage).
+    let finished = PassthroughSubject<Double, Never>()
 
     /// Horloge ne prévient personne et n'écrit son fichier sur disque que de temps en temps :
     /// on relit ses préférences en mémoire (via cfprefsd, ~0,02 ms) toutes les demi-secondes,
@@ -66,6 +69,11 @@ final class TimerManager: ObservableObject {
     func refresh() {
         let now = Date()
         let new = Self.hidingStalePause(ClockTimerSource.read(), \.isPaused, pause: &timerPause, now: now)
+        // Le minuteur en cours disparaît alors que sa fin est atteinte : il vient de sonner
+        // (et non d'être annulé, ce qui le ferait disparaître avant l'heure).
+        if new == nil, let old = timer, let fireDate = old.fireDate, fireDate.timeIntervalSince(now) < 1 {
+            finished.send(old.duration)
+        }
         if new != timer { timer = new }
         let watch = Self.hidingStalePause(ClockTimerSource.readStopwatch(), \.isPaused, pause: &stopwatchPause, now: now)
         if watch != stopwatch { stopwatch = watch }

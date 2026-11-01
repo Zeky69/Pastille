@@ -6,6 +6,8 @@ struct VerificationCode: Equatable {
     var code: String
     var sender: String
     var received: Date
+    /// Service qui envoie le code (« Instagram », « Google »…), quand on arrive à le deviner.
+    var service: String?
 }
 
 /// Repère les codes de vérification dans les messages reçus (base de Messages) et les mails (app Mail), lus en local.
@@ -105,7 +107,10 @@ final class VerificationCodeManager: ObservableObject {
                     let manager = VerificationCodeManager.shared
                     manager.apply(result)
                     if let mailCode, Appearance.bool(Appearance.codesMailKey) {
-                        manager.show(VerificationCode(code: mailCode.code, sender: mailCode.sender, received: mailCode.date))
+                        manager.show(VerificationCode(
+                            code: mailCode.code, sender: mailCode.sender, received: mailCode.date,
+                            service: Self.serviceName(text: "", sender: mailCode.sender)
+                        ))
                     }
                 }
             }
@@ -124,7 +129,10 @@ final class VerificationCodeManager: ObservableObject {
             guard !isFirstRead else { return }
             for message in messages.reversed() {
                 if Appearance.bool(Appearance.codesMessagesKey), let code = Self.extractCode(from: message.text) {
-                    show(VerificationCode(code: code, sender: message.sender, received: message.date))
+                    show(VerificationCode(
+                        code: code, sender: message.sender, received: message.date,
+                        service: Self.serviceName(text: message.text, sender: message.sender)
+                    ))
                     return
                 }
             }
@@ -234,6 +242,43 @@ final class VerificationCodeManager: ObservableObject {
         }
         guard i + length <= bytes.count else { return nil }
         return String(bytes: bytes[i..<i + length], encoding: .utf8)
+    }
+
+    // MARK: - Nom du service
+
+    /// Services courants, cherchés dans le texte du message.
+    nonisolated private static let knownServices = [
+        "Instagram", "WhatsApp", "Facebook", "Messenger", "Google", "Apple", "Microsoft", "Amazon", "PayPal",
+        "Snapchat", "TikTok", "Discord", "Telegram", "Signal", "Twitter", "LinkedIn", "Netflix", "Spotify",
+        "Uber", "Deliveroo", "Airbnb", "Steam", "Epic Games", "Riot", "Twitch", "Binance", "Revolut", "Lydia",
+        "BNP", "Société Générale", "Crédit Agricole", "LCL", "Boursorama", "Caisse d'Épargne", "La Banque Postale",
+        "Ameli", "Doctolib", "SNCF", "Orange", "SFR", "Bouygues", "Free", "Leboncoin", "Vinted", "Shein", "Yahoo",
+    ]
+
+    /// Devine le service : nom connu dans le texte, « BNP : … » en début de message, nom d'affichage
+    /// de l'expéditeur, ou domaine de son adresse mail. Un simple numéro ne donne rien.
+    nonisolated static func serviceName(text: String, sender: String) -> String? {
+        let lowered = text.lowercased()
+        if let known = knownServices.first(where: { lowered.contains($0.lowercased()) }) { return known }
+
+        if let regex = try? NSRegularExpression(pattern: #"^\s*([A-Z][A-Za-z0-9&'.]+(?: [A-Z][A-Za-z0-9&'.]+)?)\s*[:\-–]"#),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let range = Range(match.range(at: 1), in: text),
+           !["code", "votre", "ton", "your", "bonjour", "hello", "hi", "otp", "pin", "info", "alerte"]
+               .contains(text[range].lowercased().split(separator: " ").first.map(String.init) ?? "") {
+            return String(text[range])
+        }
+
+        let trimmed = sender.trimmingCharacters(in: .whitespaces)
+        if let at = trimmed.firstIndex(of: "@") {
+            // no-reply@accounts.google.com → Google
+            let parts = trimmed[trimmed.index(after: at)...].split(separator: ".")
+            guard parts.count >= 2 else { return nil }
+            return parts[parts.count - 2].capitalized
+        }
+        // Expéditeur alphanumérique (« INSTAGRAM ») ou nom d'affichage d'un mail ; un numéro ne dit rien.
+        guard trimmed.contains(where: \.isLetter), !trimmed.hasPrefix("+") else { return nil }
+        return trimmed == trimmed.uppercased() ? trimmed.capitalized : trimmed
     }
 
     // MARK: - Détection du code
