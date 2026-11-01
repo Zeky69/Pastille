@@ -185,8 +185,7 @@ private struct SourceBadge: View {
             Image(nsImage: icon)
                 .resizable()
                 .frame(width: size, height: size)
-                // Déborde un peu à droite de la pochette, mais jamais en dessous : le bas de la page
-                // est coupé net (transition entre les pages), le badge le serait aussi.
+                // Déborde un peu à droite de la pochette, mais pas en dessous (il toucherait le bord de la pastille).
                 .offset(x: size * 0.25, y: -2)
                 .shadow(color: .black.opacity(0.5), radius: 3, y: 1)
                 .help(source.name)

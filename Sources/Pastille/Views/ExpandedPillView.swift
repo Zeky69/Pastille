@@ -31,8 +31,9 @@ struct ExpandedPillView: View {
                         .transition(pageTransition)
                 }
             }
+            // Pas de découpe ici : la lueur des pochettes doit pouvoir déborder. La forme de la pastille
+            // coupe déjà ce qui sort de ses bords, y compris les pages qui glissent.
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .clipped()
             .padding(.bottom, 12)
         }
     }
