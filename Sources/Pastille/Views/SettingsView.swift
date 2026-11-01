@@ -29,6 +29,7 @@ private struct AppearanceSettings: View {
     @AppStorage(Appearance.musicStyleKey) private var musicStyle = Appearance.MusicStyle.artwork.rawValue
     @AppStorage(Appearance.accentKey) private var accent = Appearance.AccentChoice.artwork.rawValue
     @AppStorage(Appearance.sizeKey) private var size = Appearance.PillSize.standard.rawValue
+    @AppStorage(Appearance.materialKey) private var material = Appearance.PillMaterial.black.rawValue
     @AppStorage(Appearance.showWeatherKey) private var showWeather = true
     @AppStorage(Appearance.showBluetoothKey) private var showBluetooth = true
     @AppStorage(Appearance.showCaffeineKey) private var showCaffeine = true
@@ -90,6 +91,10 @@ private struct AppearanceSettings: View {
             }
 
             Section("Style") {
+                Picker("Fond de la pastille", selection: custom($material)) {
+                    ForEach(Appearance.PillMaterial.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+                .pickerStyle(.segmented)
                 Picker("Taille ouverte", selection: custom($size)) {
                     ForEach(Appearance.PillSize.allCases) { Text($0.label).tag($0.rawValue) }
                 }

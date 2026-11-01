@@ -7,6 +7,12 @@ struct PillRootView: View {
     var onOpenSettings: () -> Void
     @AppStorage(Appearance.musicStyleKey) private var musicStyle = Appearance.MusicStyle.artwork.rawValue
     @AppStorage(Appearance.homeLayoutKey) private var homeLayout = Appearance.HomeLayout.musicAndCalendar.rawValue
+    @AppStorage(Appearance.materialKey) private var material = Appearance.PillMaterial.black.rawValue
+
+    /// Verre liquide seulement pastille ouverte : fermée, elle reste noire comme l'encoche.
+    private var showsGlass: Bool {
+        material == Appearance.PillMaterial.glass.rawValue && viewModel.isExpanded
+    }
 
     /// Style « Immersif » : la pochette floutée couvre toute la pastille ouverte (page d'accueil).
     private var showsImmersiveBackground: Bool {
@@ -23,10 +29,10 @@ struct PillRootView: View {
         let shape = PillShape(topCornerRadius: topRadius, bottomCornerRadius: bottomRadius)
 
         ZStack(alignment: .top) {
-            shape
-                .fill(Color.black)
+            PillBackground(shape: shape, glass: showsGlass)
                 .frame(width: size.width, height: size.height)
-                .shadow(color: .black.opacity(viewModel.isExpanded ? 0.5 : 0), radius: viewModel.isExpanded ? 14 : 0, y: 6)
+                .shadow(color: .black.opacity(viewModel.isExpanded ? (showsGlass ? 0.3 : 0.5) : 0),
+                        radius: viewModel.isExpanded ? 14 : 0, y: 6)
 
             content
                 .frame(width: viewModel.expandedSize.width, height: viewModel.expandedSize.height, alignment: .top)
@@ -62,6 +68,34 @@ struct PillRootView: View {
                     .frame(width: viewModel.compactSize.width, height: viewModel.cutoutSize.height)
                     .transition(.opacity.animation(.easeOut(duration: 0.12)))
             }
+        }
+    }
+}
+
+/// Fond de la pastille : noir, ou Liquid Glass (macOS 26 et plus ; avant, un verre dépoli classique).
+/// Verre fumé : nettement teinté de sombre, pour que le noir de l'encoche ne tranche pas avec la
+/// transparence et que le texte blanc reste lisible sur n'importe quel fond.
+private struct PillBackground: View {
+    let shape: PillShape
+    let glass: Bool
+
+    var body: some View {
+        ZStack {
+            if glass {
+                glassLayer.transition(.opacity)
+            }
+            shape.fill(Color.black).opacity(glass ? 0 : 1)
+        }
+        .animation(.easeInOut(duration: 0.35), value: glass)
+    }
+
+    @ViewBuilder
+    private var glassLayer: some View {
+        if #available(macOS 26, *) {
+            Color.clear.glassEffect(.regular.tint(.black.opacity(0.62)), in: shape)
+        } else {
+            shape.fill(.ultraThinMaterial)
+                .overlay(shape.fill(Color.black.opacity(0.55)))
         }
     }
 }

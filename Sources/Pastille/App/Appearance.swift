@@ -10,6 +10,7 @@ enum Appearance {
     static let musicStyleKey = "appearance.musicStyle"
     static let accentKey = "appearance.accent"
     static let sizeKey = "appearance.size"
+    static let materialKey = "appearance.material"
     static let showWeatherKey = "appearance.showWeather"
     static let showBluetoothKey = "appearance.showBluetooth"
     static let showCaffeineKey = "appearance.showCaffeine"
@@ -40,6 +41,7 @@ enum Appearance {
             musicStyleKey: MusicStyle.artwork.rawValue,
             accentKey: AccentChoice.artwork.rawValue,
             sizeKey: PillSize.standard.rawValue,
+            materialKey: PillMaterial.black.rawValue,
             showWeatherKey: true,
             showBluetoothKey: true,
             showCaffeineKey: true,
@@ -207,6 +209,18 @@ enum Appearance {
         }
     }
 
+    /// Fond de la pastille ouverte (fermée, elle reste noire pour se fondre dans l'encoche).
+    enum PillMaterial: String, CaseIterable, Identifiable {
+        case black, glass
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .black: "Noir"
+            case .glass: "Liquid Glass"
+            }
+        }
+    }
+
     enum PillSize: String, CaseIterable, Identifiable {
         case compact, standard, large
         var id: String { rawValue }
@@ -320,7 +334,7 @@ enum Appearance {
         for key in [clockActivityKey, downloadActivityKey, codeActivityKey, hudActivityKey, batteryAlertKey,
                     deviceConnectedKey, powerKey, codesMessagesKey, codesMailKey,
                     timerDoneKey, newTrackKey, codesSenderKey,
-                    musicPriorityKey, musicOtherAppsKey, musicSourceBadgeKey, weatherUnitKey,
+                    musicPriorityKey, musicOtherAppsKey, musicSourceBadgeKey, weatherUnitKey, materialKey,
                     Settings.musicLiveActivityKey, Settings.showBatteryPercentKey] {
             defaults.removeObject(forKey: key)
         }
