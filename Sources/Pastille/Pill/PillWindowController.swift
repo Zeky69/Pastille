@@ -66,23 +66,44 @@ final class PillWindowController {
         checkFullscreen()
     }
 
-    /// Une fenêtre d'une autre app couvre-t-elle tout l'écran de la pastille, barre des menus comprise ?
+    /// Plein écran : on demande à l'app au premier plan (via l'Accessibilité) si sa fenêtre active est
+    /// en plein écran macOS. En secours, pour les apps qui font leur propre plein écran (jeux, lecteurs),
+    /// une de ses fenêtres couvre-t-elle tout l'écran de la pastille, bande de l'encoche comprise ?
     private func checkFullscreen() {
-        let screenFrame = screen.frame
-        let ownPID = ProcessInfo.processInfo.processIdentifier
-        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-            as? [[String: Any]] ?? []
-        let covered = windows.contains { info in
-            guard (info[kCGWindowLayer as String] as? Int) == 0,
-                  (info[kCGWindowOwnerPID as String] as? Int32) != ownPID,
-                  let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
-                  let bounds = CGRect(dictionaryRepresentation: boundsDict) else { return false }
-            // Coordonnées CG : origine en haut à gauche de l'écran principal.
-            let primaryHeight = NSScreen.screens.first?.frame.height ?? screenFrame.height
-            let flipped = CGRect(x: bounds.minX, y: primaryHeight - bounds.maxY, width: bounds.width, height: bounds.height)
-            return flipped.insetBy(dx: 1, dy: 1).contains(screenFrame.insetBy(dx: 2, dy: 2))
+        var covered = false
+        if let app = NSWorkspace.shared.frontmostApplication,
+           app.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            covered = Self.focusedWindowIsFullscreen(pid: app.processIdentifier)
+                || Self.windowCoversScreen(pid: app.processIdentifier, screen: screen.frame)
         }
         if covered != viewModel.fullscreenAppActive { viewModel.fullscreenAppActive = covered }
+    }
+
+    private static func focusedWindowIsFullscreen(pid: pid_t) -> Bool {
+        let app = AXUIElementCreateApplication(pid)
+        var window: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &window) == .success,
+              let window else { return false }
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window as! AXUIElement, "AXFullScreen" as CFString, &value) == .success else {
+            return false
+        }
+        return (value as? Bool) ?? false
+    }
+
+    private static func windowCoversScreen(pid: pid_t, screen: CGRect) -> Bool {
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.height
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+            as? [[String: Any]] ?? []
+        return windows.contains { info in
+            guard (info[kCGWindowOwnerPID as String] as? Int32) == pid,
+                  (info[kCGWindowLayer as String] as? Int ?? -1) >= 0,
+                  let dict = info[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: dict) else { return false }
+            // Coordonnées CG : origine en haut à gauche de l'écran principal.
+            let frame = CGRect(x: bounds.minX, y: primaryHeight - bounds.maxY, width: bounds.width, height: bounds.height)
+            return frame.insetBy(dx: -1, dy: -1).contains(screen)
+        }
     }
 
     static func preferredScreen() -> NSScreen {
