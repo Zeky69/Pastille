@@ -31,9 +31,11 @@ struct ExpandedPillView: View {
                 switch viewModel.tab {
                 case .home:
                     home
+                        .measuredHeight(for: .home, in: viewModel)
                         .transition(pageTransition)
                 case .screenshots:
                     ScreenshotsView()
+                        .measuredHeight(for: .screenshots, in: viewModel)
                         .transition(pageTransition)
                 }
             }
@@ -162,6 +164,16 @@ private struct CodeOrWeatherView: View {
             WeatherView()
                 .transition(.blurReplace)
         }
+    }
+}
+
+extension View {
+    /// Mesure la hauteur naturelle de la page (sans l'étirer) pour que la pastille s'y ajuste.
+    func measuredHeight(for tab: PillTab, in viewModel: PillViewModel) -> some View {
+        fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                viewModel.reportContentHeight(height, for: tab)
+            }
     }
 }
 

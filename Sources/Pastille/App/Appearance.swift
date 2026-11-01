@@ -73,6 +73,14 @@ enum Appearance {
 
     /// Taille de la pastille ouverte : celle du réglage, sauf avec le lecteur seul,
     /// où le style décide (compact : bien plus petite ; vinyle et immersif : un peu plus haute).
+    /// Ce qui change la hauteur du contenu : la hauteur mesurée est mémorisée pour chaque combinaison.
+    static var contentKey: String {
+        let defaults = UserDefaults.standard
+        return [homeLayoutKey, calendarStyleKey, musicStyleKey, sizeKey]
+            .map { defaults.string(forKey: $0) ?? "" }
+            .joined(separator: "|")
+    }
+
     /// Lecteur compact seul : en-tête et marges resserrés.
     static var isCompactLayout: Bool { homeLayout == .musicOnly && musicStyle == .compact }
 

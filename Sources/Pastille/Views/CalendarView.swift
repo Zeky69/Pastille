@@ -313,6 +313,7 @@ private struct AgendaCalendar: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollIndicators(.never)
+            .frame(height: 130)
         }
     }
 
@@ -347,6 +348,7 @@ private struct MonthCalendar: View {
             .frame(minWidth: 360)
             monthGrid
         }
+        .frame(height: 142)
     }
 
     private var monthGrid: some View {

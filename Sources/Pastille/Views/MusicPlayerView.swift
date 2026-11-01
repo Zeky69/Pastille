@@ -72,6 +72,7 @@ struct MusicPlayerView: View {
                 }
             }
         }
+        .frame(height: 124)
     }
 
     // MARK: Compact
@@ -138,6 +139,7 @@ struct MusicPlayerView: View {
                 }
             }
         }
+        .frame(height: 116)
     }
 
     // MARK: Éléments communs

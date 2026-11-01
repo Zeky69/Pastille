@@ -63,7 +63,24 @@ enum LiveActivity: Equatable { case none, music, charging, unplugged, charged, d
 @MainActor
 final class PillViewModel: ObservableObject {
     @Published var state: PillState = .compact
-    @Published var tab: PillTab = .home
+    @Published var tab: PillTab = .home {
+        didSet { if tab != oldValue { refreshExpandedSize() } }
+    }
+
+    /// Hauteur mesurée du contenu de chaque page, par mise en page, mémorisée d'un lancement à l'autre
+    /// pour que la pastille s'ouvre directement à la bonne taille.
+    private var contentHeights = UserDefaults.standard.dictionary(forKey: "measuredContentHeights") as? [String: Double] ?? [:]
+
+    private func contentKey(for tab: PillTab) -> String { "\(tab.rawValue)|\(Appearance.contentKey)" }
+
+    /// Appelé par la page affichée avec sa hauteur réelle.
+    func reportContentHeight(_ height: CGFloat, for tab: PillTab) {
+        let key = contentKey(for: tab)
+        guard height > 1, abs((contentHeights[key] ?? 0) - Double(height)) > 0.5 else { return }
+        contentHeights[key] = Double(height)
+        UserDefaults.standard.set(contentHeights, forKey: "measuredContentHeights")
+        refreshExpandedSize()
+    }
     /// Sens du dernier changement d'onglet (pour faire glisser la page du bon côté).
     @Published private(set) var tabMovesForward = true
 
@@ -256,10 +273,14 @@ final class PillViewModel: ObservableObject {
 
     var currentSize: CGSize { isExpanded ? expandedSize : compactSize }
 
+    /// Largeur selon les réglages ; hauteur = en-tête (encoche) + 6 pt + contenu mesuré + 12 pt de marge basse.
     private func refreshExpandedSize() {
-        let size = Appearance.expandedSize(cutout: cutoutSize)
+        var size = Appearance.expandedSize(cutout: cutoutSize)
+        if let content = contentHeights[contentKey(for: tab)] {
+            size.height = min(max(cutoutSize.height + 6 + CGFloat(content) + 12, cutoutSize.height + 50), 320)
+        }
         guard size != expandedSize else { return }
-        expandedSize = size
+        withAnimation(.spring(duration: 0.35, bounce: 0.12)) { expandedSize = size }
         onExpandedSizeChange?()
     }
 
