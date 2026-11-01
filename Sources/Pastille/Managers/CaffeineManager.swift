@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import IOKit.pwr_mgt
 
@@ -8,11 +9,10 @@ final class CaffeineManager: ObservableObject {
     static let shared = CaffeineManager()
 
     @Published private(set) var isActive = false
-    /// Bref affichage dans la pastille fermée après un changement.
-    @Published private(set) var flash = false
+    /// Envoyé à chaque bascule (nouvel état), pour un bref affichage dans la pastille fermée.
+    let toggled = PassthroughSubject<Bool, Never>()
 
     private var assertion: IOPMAssertionID = 0
-    private var flashWork: DispatchWorkItem?
 
     func toggle() {
         if isActive {
@@ -27,14 +27,6 @@ final class CaffeineManager: ObservableObject {
             )
             isActive = status == kIOReturnSuccess
         }
-        showFlash()
-    }
-
-    private func showFlash() {
-        flash = true
-        flashWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.flash = false }
-        flashWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
+        toggled.send(isActive)
     }
 }

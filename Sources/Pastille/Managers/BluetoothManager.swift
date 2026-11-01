@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import IOBluetooth
 import SwiftUI
 
@@ -23,13 +24,12 @@ final class BluetoothManager: ObservableObject {
     static let shared = BluetoothManager()
 
     @Published private(set) var devices: [BluetoothDevice] = []
-    /// Appareil qui vient de se connecter, affiché quelques secondes dans la pastille fermée.
-    @Published private(set) var justConnected: BluetoothDevice?
+    /// Appareil qui vient de se connecter (batterie pas encore connue : niveau -1).
+    let connections = PassthroughSubject<BluetoothDevice, Never>()
 
     private let connectionObserver = ConnectionObserver()
     private var startedAt = Date()
     private var connectWork: [DispatchWorkItem] = []
-    private var hideConnectedWork: DispatchWorkItem?
 
     private var poll: Timer?
     /// macOS n'expose pas l'état de charge : un niveau qui monte entre deux lectures veut dire « en charge »,
@@ -48,13 +48,13 @@ final class BluetoothManager: ObservableObject {
     // MARK: - Connexion d'un appareil
 
     /// Appelé par macOS dès qu'un appareil se connecte. La batterie n'est connue qu'après
-    /// quelques instants : on affiche l'appareil tout de suite, puis l'anneau dès qu'il arrive.
+    /// quelques instants : la pastille affiche l'appareil tout de suite, puis l'anneau dès qu'il arrive.
     fileprivate func deviceConnected(_ device: IOBluetoothDevice) {
         // macOS signale aussi les appareils déjà connectés au lancement : on les ignore.
         guard Date().timeIntervalSince(startedAt) > 3, let address = device.addressString else { return }
         let id = Self.normalize(address)
         let audio = device.deviceClassMajor == UInt32(kBluetoothDeviceClassMajorAudio)
-        show(BluetoothDevice(
+        connections.send(BluetoothDevice(
             id: id,
             name: device.name ?? "Appareil",
             symbol: Self.symbol(minorType: audio ? "headphones" : nil, productID: nil, name: device.name ?? ""),
@@ -69,24 +69,6 @@ final class BluetoothManager: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
             return work
         }
-    }
-
-    private func show(_ device: BluetoothDevice) {
-        justConnected = device
-        hideConnectedWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.justConnected = nil }
-        hideConnectedWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: work)
-    }
-
-    /// Une fois la batterie lue, l'appareil affiché reçoit son vrai niveau et sa vraie icône.
-    private func updateJustConnected() {
-        guard let current = justConnected,
-              let match = devices.first(where: { Self.normalize($0.id) == current.id }),
-              match.level != current.level else { return }
-        var updated = match
-        updated.id = current.id
-        justConnected = updated
     }
 
     /// Les anneaux ne se voient que pastille ouverte : lecture toutes les 20 s quand elle l'est,
@@ -115,7 +97,6 @@ final class BluetoothManager: ObservableObject {
                     if manager.devices != devices {
                         withAnimation(.spring(duration: 0.35, bounce: 0.2)) { manager.devices = devices }
                     }
-                    manager.updateJustConnected()
                 }
             }
         }
@@ -162,6 +143,21 @@ final class BluetoothManager: ObservableObject {
 
     nonisolated static let levelsArgument = "--bluetooth-levels"
 
+    /// Vérification : le lecteur de batteries (processus neuf) répond-il correctement ?
+    nonisolated static func levelsReaderWorks() -> Bool {
+        guard let executable = Bundle.main.executableURL else { return false }
+        let process = Process()
+        process.executableURL = executable
+        process.arguments = [levelsArgument]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return false }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return process.terminationStatus == 0 && (try? JSONSerialization.jsonObject(with: data)) != nil
+    }
+
     /// Mode outil : écrit les niveaux en JSON sur la sortie standard.
     nonisolated static func printLevels() {
         var result: [String: [String: Int]] = [:]
@@ -179,6 +175,13 @@ final class BluetoothManager: ObservableObject {
         if let data = try? JSONSerialization.data(withJSONObject: result) {
             FileHandle.standardOutput.write(data)
         }
+    }
+
+    /// Version à jour (batterie lue) d'un appareil, d'après son adresse.
+    func current(_ device: BluetoothDevice) -> BluetoothDevice {
+        guard var match = devices.first(where: { Self.normalize($0.id) == device.id }) else { return device }
+        match.id = device.id
+        return match
     }
 
     /// « 80-c3-ba-66-f4-b6 » et « 80:C3:BA:66:F4:B6 » désignent le même appareil.

@@ -45,6 +45,44 @@ final class PillWindowController {
         reposition()
         panel.orderFrontRegardless()
         installMonitors()
+        watchFullscreen()
+    }
+
+    // MARK: - Plein écran
+
+    /// Entrer en plein écran change d'espace (ou active une autre app) ; l'animation d'entrée dure
+    /// environ une seconde, d'où les vérifications un peu décalées.
+    private func watchFullscreen() {
+        let center = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    for delay in [0.1, 0.8, 1.6] {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { self?.checkFullscreen() }
+                    }
+                }
+            }
+        }
+        checkFullscreen()
+    }
+
+    /// Une fenêtre d'une autre app couvre-t-elle tout l'écran de la pastille, barre des menus comprise ?
+    private func checkFullscreen() {
+        let screenFrame = screen.frame
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+            as? [[String: Any]] ?? []
+        let covered = windows.contains { info in
+            guard (info[kCGWindowLayer as String] as? Int) == 0,
+                  (info[kCGWindowOwnerPID as String] as? Int32) != ownPID,
+                  let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: boundsDict) else { return false }
+            // Coordonnées CG : origine en haut à gauche de l'écran principal.
+            let primaryHeight = NSScreen.screens.first?.frame.height ?? screenFrame.height
+            let flipped = CGRect(x: bounds.minX, y: primaryHeight - bounds.maxY, width: bounds.width, height: bounds.height)
+            return flipped.insetBy(dx: 1, dy: 1).contains(screenFrame.insetBy(dx: 2, dy: 2))
+        }
+        if covered != viewModel.fullscreenAppActive { viewModel.fullscreenAppActive = covered }
     }
 
     static func preferredScreen() -> NSScreen {

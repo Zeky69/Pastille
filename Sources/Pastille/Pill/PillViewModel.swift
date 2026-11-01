@@ -15,6 +15,48 @@ enum PillTab: String, CaseIterable, Identifiable {
     }
 }
 
+/// Apparition courte (quelques secondes) dans la pastille fermée. Elles passent l'une après l'autre
+/// dans une file d'attente : aucune n'est perdue si une autre est déjà à l'écran.
+enum Moment: Equatable {
+    case charging, unplugged, charged
+    case lowBattery(Int)
+    case deviceConnected(BluetoothDevice)
+    case caffeine(Bool)
+
+    var activity: LiveActivity {
+        switch self {
+        case .charging: .charging
+        case .unplugged: .unplugged
+        case .charged: .charged
+        case .lowBattery: .lowBattery
+        case .deviceConnected: .deviceConnected
+        case .caffeine: .caffeine
+        }
+    }
+
+    var duration: TimeInterval {
+        switch self {
+        case .charging: 3
+        case .unplugged: 2.5
+        case .charged, .lowBattery, .deviceConnected: 4
+        case .caffeine: 2
+        }
+    }
+
+    /// Un nouveau moment du même genre remplace l'ancien plutôt que de s'ajouter à la file.
+    func replaces(_ other: Moment) -> Bool {
+        switch (self, other) {
+        case (.charging, .charging), (.charging, .unplugged), (.unplugged, .unplugged), (.unplugged, .charging),
+             (.charged, .charged), (.lowBattery, .lowBattery), (.caffeine, .caffeine):
+            true
+        case let (.deviceConnected(a), .deviceConnected(b)):
+            a.id == b.id
+        default:
+            false
+        }
+    }
+}
+
 /// Activité affichée de part et d'autre de la pastille compacte (façon « Live Activity »).
 enum LiveActivity: Equatable { case none, music, charging, unplugged, charged, deviceConnected, lowBattery, timer, stopwatch, download, caffeine, code, hud }
 
@@ -46,15 +88,27 @@ final class PillViewModel: ObservableObject {
     /// Taille de la découpe de l'écran (ou d'une découpe simulée sur un écran externe).
     @Published private(set) var cutoutSize = CGSize(width: 185, height: 32)
     @Published private(set) var liveActivity: LiveActivity = .none
+    /// Une app est en plein écran sur l'écran de la pastille (vidéo, jeu, présentation).
+    @Published var fullscreenAppActive = false
+
+    /// En plein écran, la pastille fermée s'efface ; le volume et la luminosité restent visibles,
+    /// et elle réapparaît dès qu'on l'ouvre en approchant la souris.
+    var isConcealed: Bool {
+        fullscreenAppActive && Settings.hideInFullscreen && !isExpanded && liveActivity != .hud
+    }
 
     /// Taille ouverte, selon les réglages « Taille » et « Lecteur » (normale : 640 × 190).
     @Published private(set) var expandedSize = Appearance.expandedSize
     /// Appelé quand la taille ouverte change, pour redimensionner la fenêtre.
     var onExpandedSizeChange: (() -> Void)?
 
-    /// Bref affichage au branchement (.charging) ou au débranchement (.unplugged).
-    private var powerFlash: LiveActivity?
-    private var powerFlashTask: DispatchWorkItem?
+    /// Moment à l'écran (ou en tête de file s'il est momentanément caché par le volume).
+    @Published private(set) var moment: Moment?
+    private var pendingMoments: [Moment] = []
+    /// Le compte à rebours d'un moment ne tourne que pendant qu'il est réellement visible.
+    private var momentRemaining: TimeInterval = 0
+    private var momentShownAt: Date?
+    private var momentWork: DispatchWorkItem?
     private var cancellables = Set<AnyCancellable>()
 
     init() {
@@ -126,40 +180,44 @@ final class PillViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        BluetoothManager.shared.$justConnected
-            .map { $0 != nil }
-            .removeDuplicates()
+        BluetoothManager.shared.connections
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] device in self?.enqueue(.deviceConnected(device)) }
+            .store(in: &cancellables)
+
+        // La batterie d'un appareil qui vient de se connecter arrive après coup : on redessine.
+        BluetoothManager.shared.$devices
             .sink { [weak self] _ in
-                DispatchQueue.main.async { self?.refreshLiveActivity() }
+                guard case .deviceConnected = self?.moment else { return }
+                DispatchQueue.main.async { self?.objectWillChange.send() }
             }
             .store(in: &cancellables)
 
-        BatteryManager.shared.$justFullyCharged
-            .removeDuplicates()
-            .sink { [weak self] _ in
-                DispatchQueue.main.async { self?.refreshLiveActivity() }
+        battery.events
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                switch event {
+                case .full:
+                    self?.enqueue(.charged)
+                case .low(let threshold):
+                    if Appearance.bool(Appearance.batteryAlertKey) { self?.enqueue(.lowBattery(threshold)) }
+                }
             }
             .store(in: &cancellables)
 
-        CaffeineManager.shared.$flash
-            .removeDuplicates()
-            .sink { [weak self] _ in
-                DispatchQueue.main.async { self?.refreshLiveActivity() }
-            }
-            .store(in: &cancellables)
-
-        battery.$lowAlert
-            .map { $0 != nil }
-            .removeDuplicates()
-            .sink { [weak self] _ in
-                DispatchQueue.main.async { self?.refreshLiveActivity() }
-            }
+        CaffeineManager.shared.toggled
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isOn in self?.enqueue(.caffeine(isOn)) }
             .store(in: &cancellables)
 
         battery.$isPluggedIn
             .removeDuplicates()
             .dropFirst()
-            .sink { [weak self] plugged in self?.flashPower(plugged ? .charging : .unplugged) }
+            .sink { [weak self] plugged in
+                // Branché : l'alerte de batterie faible n'a plus lieu d'être.
+                if plugged { self?.dropMoments { if case .lowBattery = $0 { true } else { false } } }
+                self?.enqueue(plugged ? .charging : .unplugged)
+            }
             .store(in: &cancellables)
     }
 
@@ -210,16 +268,58 @@ final class PillViewModel: ObservableObject {
         }
     }
 
-    private func flashPower(_ activity: LiveActivity) {
-        powerFlash = activity
-        refreshLiveActivity()
-        powerFlashTask?.cancel()
-        let task = DispatchWorkItem { [weak self] in
-            self?.powerFlash = nil
-            self?.refreshLiveActivity()
+    // MARK: - File d'attente des moments
+
+    func enqueue(_ new: Moment) {
+        if let current = moment, new.replaces(current) {
+            // Même genre déjà à l'écran : on met à jour et on relance son compte à rebours.
+            moment = new
+            restartMomentTimer()
+        } else {
+            pendingMoments.removeAll { new.replaces($0) }
+            pendingMoments.append(new)
+            if moment == nil { advanceMoment() }
         }
-        powerFlashTask = task
-        DispatchQueue.main.asyncAfter(deadline: .now() + (activity == .charging ? 3 : 2.5), execute: task)
+        refreshLiveActivity()
+    }
+
+    private func dropMoments(where match: (Moment) -> Bool) {
+        pendingMoments.removeAll(where: match)
+        if let moment, match(moment) { advanceMoment() }
+    }
+
+    private func advanceMoment() {
+        momentWork?.cancel()
+        momentWork = nil
+        momentShownAt = nil
+        moment = pendingMoments.isEmpty ? nil : pendingMoments.removeFirst()
+        momentRemaining = moment?.duration ?? 0
+        refreshLiveActivity()
+    }
+
+    private func restartMomentTimer() {
+        momentRemaining = moment?.duration ?? 0
+        if momentShownAt != nil {
+            momentShownAt = nil
+            momentWork?.cancel()
+            momentWork = nil
+        }
+    }
+
+    /// Démarre ou met en pause le compte à rebours selon que le moment est visible ou caché.
+    private func syncMomentTimer() {
+        let visible = moment.map { liveActivity == $0.activity } ?? false
+        if visible, momentShownAt == nil {
+            momentShownAt = Date()
+            let work = DispatchWorkItem { [weak self] in self?.advanceMoment() }
+            momentWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + momentRemaining, execute: work)
+        } else if !visible, let shownAt = momentShownAt {
+            momentRemaining = max(momentRemaining - Date().timeIntervalSince(shownAt), 0.5)
+            momentShownAt = nil
+            momentWork?.cancel()
+            momentWork = nil
+        }
     }
 
     /// Minuteur ou chronomètre : ce qui tourne passe avant ce qui est en pause, le minuteur d'abord.
@@ -238,18 +338,11 @@ final class PillViewModel: ObservableObject {
         let new: LiveActivity
         if HUDManager.shared.current != nil {
             new = .hud
+        } else if let moment {
+            // Les moments sont courts : ils passent même devant un code reçu (qui reste 3 min).
+            new = moment.activity
         } else if Appearance.bool(Appearance.codeActivityKey), VerificationCodeManager.shared.current != nil {
             new = .code
-        } else if CaffeineManager.shared.flash {
-            new = .caffeine
-        } else if Appearance.bool(Appearance.batteryAlertKey), BatteryManager.shared.lowAlert != nil {
-            new = .lowBattery
-        } else if BluetoothManager.shared.justConnected != nil {
-            new = .deviceConnected
-        } else if BatteryManager.shared.justFullyCharged {
-            new = .charged
-        } else if let powerFlash {
-            new = powerFlash
         } else if Appearance.bool(Appearance.clockActivityKey), let clock = clockActivity {
             new = clock
         } else if Appearance.bool(Appearance.downloadActivityKey), DownloadManager.shared.state != .idle {
@@ -262,5 +355,6 @@ final class PillViewModel: ObservableObject {
         if new != liveActivity {
             withAnimation(PillAnimation.activity) { liveActivity = new }
         }
+        syncMomentTimer()
     }
 }

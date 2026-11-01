@@ -35,6 +35,8 @@ struct PillRootView: View {
                 }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .opacity(viewModel.isConcealed ? 0 : 1)
+        .animation(.easeInOut(duration: 0.3), value: viewModel.isConcealed)
         .preferredColorScheme(.dark)
     }
 

@@ -15,6 +15,14 @@ struct CompactPillView: View {
 
     private var h: CGFloat { viewModel.cutoutSize.height }
 
+    private var lowBatteryThreshold: Int? {
+        if case .lowBattery(let threshold) = viewModel.moment { threshold } else { nil }
+    }
+
+    private var caffeineOn: Bool {
+        if case .caffeine(let isOn) = viewModel.moment { isOn } else { caffeine.isActive }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             leading
@@ -47,7 +55,8 @@ struct CompactPillView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 12)
         case .deviceConnected:
-            if let device = bluetooth.justConnected {
+            if case .deviceConnected(let snapshot) = viewModel.moment {
+                let device = bluetooth.current(snapshot)
                 HStack(spacing: 6) {
                     Image(systemName: device.symbol)
                         .font(.system(size: 13, weight: .semibold))
@@ -85,9 +94,9 @@ struct CompactPillView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 12)
         case .caffeine:
-            Image(systemName: caffeine.isActive ? "cup.and.saucer.fill" : "cup.and.saucer")
+            Image(systemName: caffeineOn ? "cup.and.saucer.fill" : "cup.and.saucer")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(caffeine.isActive ? Color.orange : Color.white.opacity(0.6))
+                .foregroundStyle(caffeineOn ? Color.orange : Color.white.opacity(0.6))
                 .contentTransition(.symbolEffect(.replace))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 12)
@@ -129,13 +138,13 @@ struct CompactPillView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.trailing, 12)
         case .deviceConnected:
-            if let device = bluetooth.justConnected {
-                ConnectedRing(level: device.level)
+            if case .deviceConnected(let snapshot) = viewModel.moment {
+                ConnectedRing(level: bluetooth.current(snapshot).level)
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .padding(.trailing, 12)
             }
         case .lowBattery:
-            Text("\(battery.lowAlert ?? battery.level)%")
+            Text("\(lowBatteryThreshold ?? battery.level)%")
                 .font(.system(size: 12, weight: .semibold).monospacedDigit())
                 .foregroundStyle(.red)
                 .fixedSize()
@@ -161,9 +170,9 @@ struct CompactPillView: View {
                     .padding(.trailing, 12)
             }
         case .caffeine:
-            Text(caffeine.isActive ? "Éveillé" : "Veille")
+            Text(caffeineOn ? "Éveillé" : "Veille")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(caffeine.isActive ? Color.orange : Color.white.opacity(0.6))
+                .foregroundStyle(caffeineOn ? Color.orange : Color.white.opacity(0.6))
                 .fixedSize()
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.trailing, 12)

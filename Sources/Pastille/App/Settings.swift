@@ -8,6 +8,7 @@ enum Settings {
     static let showBatteryPercentKey = "showBatteryPercent"
     static let musicLiveActivityKey = "musicLiveActivity"
     static let showMenuBarIconKey = "showMenuBarIcon"
+    static let hideInFullscreenKey = "hideInFullscreen"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -17,6 +18,7 @@ enum Settings {
             showBatteryPercentKey: true,
             musicLiveActivityKey: true,
             showMenuBarIconKey: true,
+            hideInFullscreenKey: true,
         ])
     }
 
@@ -24,5 +26,6 @@ enum Settings {
     static var hoverDelay: Double { UserDefaults.standard.double(forKey: hoverDelayKey) }
     static var haptics: Bool { UserDefaults.standard.bool(forKey: hapticsKey) }
     static var musicLiveActivity: Bool { UserDefaults.standard.bool(forKey: musicLiveActivityKey) }
+    static var hideInFullscreen: Bool { UserDefaults.standard.bool(forKey: hideInFullscreenKey) }
     static var showMenuBarIcon: Bool { UserDefaults.standard.bool(forKey: showMenuBarIconKey) }
 }

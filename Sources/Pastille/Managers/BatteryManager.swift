@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import IOKit.ps
 
@@ -9,16 +10,18 @@ final class BatteryManager: ObservableObject {
     @Published private(set) var isCharging = false
     @Published private(set) var isPluggedIn = false
     @Published private(set) var hasBattery = false
-    /// Vrai quelques secondes quand le Mac, branché, atteint 100 %.
-    @Published private(set) var justFullyCharged = false
-    private var fullWork: DispatchWorkItem?
+    enum Event {
+        /// Seuil franchi (20, 10 ou 5 %) sur batterie.
+        case low(Int)
+        /// Le Mac, branché, vient d'atteindre 100 %.
+        case full
+    }
 
-    /// Seuil franchi (20, 10 ou 5 %) pendant l'alerte de batterie faible, sinon nil.
-    @Published private(set) var lowAlert: Int?
+    /// Moments à montrer dans la pastille ; c'est elle qui décide quand et combien de temps.
+    let events = PassthroughSubject<Event, Never>()
 
     private static let thresholds = [20, 10, 5]
     private var previousLevel: Int?
-    private var alertWork: DispatchWorkItem?
 
     private var source: CFRunLoopSource?
 
@@ -52,31 +55,16 @@ final class BatteryManager: ObservableObject {
         }
     }
 
-    /// Alerte quand le niveau descend sous un seuil (sur batterie uniquement).
+    /// Repère le passage d'un seuil bas (sur batterie) ou des 100 % (branché).
     private func checkLowBattery() {
         defer { previousLevel = level }
-        if isPluggedIn, level >= 100, let previous = previousLevel, previous < 100 {
-            justFullyCharged = true
-            fullWork?.cancel()
-            let work = DispatchWorkItem { [weak self] in self?.justFullyCharged = false }
-            fullWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: work)
-        }
+        guard let previous = previousLevel else { return }
         if isPluggedIn {
-            hideLowAlert()
+            if level >= 100, previous < 100 { events.send(.full) }
             return
         }
-        guard let previous = previousLevel,
-              let crossed = Self.thresholds.last(where: { previous > $0 && level <= $0 }) else { return }
-        lowAlert = crossed
-        alertWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.lowAlert = nil }
-        alertWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: work)
-    }
-
-    private func hideLowAlert() {
-        alertWork?.cancel()
-        if lowAlert != nil { lowAlert = nil }
+        if let crossed = Self.thresholds.last(where: { previous > $0 && level <= $0 }) {
+            events.send(.low(crossed))
+        }
     }
 }

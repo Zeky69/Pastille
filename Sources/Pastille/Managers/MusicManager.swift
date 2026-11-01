@@ -182,6 +182,24 @@ final class MusicManager: ObservableObject {
     /// Pochette via « À l'écoute » de macOS. Seuls les programmes d'Apple y ont accès :
     /// on passe par /usr/bin/perl, qui charge notre petite bibliothèque (Resources/NowPlaying.dylib).
     /// La pochette peut manquer pendant un changement de piste : on réessaie quelques fois.
+    /// Vérification : le lecteur « À l'écoute » (perl + bibliothèque) répond-il en JSON ?
+    nonisolated static func nowPlayingReaderWorks() -> Bool {
+        guard let resources = Bundle.main.resourceURL else { return false }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+        process.arguments = [
+            resources.appending(path: "now-playing.pl").path,
+            resources.appending(path: "NowPlaying.dylib").path,
+        ]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return false }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return process.terminationStatus == 0 && (try? JSONSerialization.jsonObject(with: data)) != nil
+    }
+
     nonisolated private static func nowPlayingArtwork(title: String?) -> NSImage? {
         guard let resources = Bundle.main.resourceURL else { return nil }
         for attempt in 0..<3 {

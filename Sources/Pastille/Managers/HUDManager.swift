@@ -296,6 +296,11 @@ final class HUDManager: ObservableObject {
     }
 }
 
+extension HUDManager {
+    /// La luminosité de l'écran intégré est-elle pilotable (framework système non public) ?
+    nonisolated static var brightnessControlAvailable: Bool { Brightness.canSet }
+}
+
 /// Touches son / luminosité, sous forme d'événements système (NX_SYSDEFINED)
 /// ou de touches F dédiées selon le clavier.
 private enum MediaKey: Equatable {

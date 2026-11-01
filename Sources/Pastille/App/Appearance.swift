@@ -272,6 +272,17 @@ enum Appearance {
         }
     }
 
+    /// Retour à l'affichage d'origine : préréglage Classique et toutes les activités réactivées.
+    /// (Les réglages de comportement — survol, haptique, lancement — ne sont pas touchés.)
+    static func resetToDefaults() {
+        let defaults = UserDefaults.standard
+        for key in [clockActivityKey, downloadActivityKey, codeActivityKey, hudActivityKey, batteryAlertKey,
+                    Settings.musicLiveActivityKey, Settings.showBatteryPercentKey] {
+            defaults.removeObject(forKey: key)
+        }
+        Preset.classic.apply()
+    }
+
     /// Un réglage modifié à la main fait passer en « Perso ».
     static func markCustom() {
         UserDefaults.standard.set(Preset.custom.rawValue, forKey: presetKey)
