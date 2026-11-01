@@ -104,7 +104,7 @@ final class VerificationCodeManager: ObservableObject {
                 MainActor.assumeIsolated {
                     let manager = VerificationCodeManager.shared
                     manager.apply(result)
-                    if let mailCode {
+                    if let mailCode, Appearance.bool(Appearance.codesMailKey) {
                         manager.show(VerificationCode(code: mailCode.code, sender: mailCode.sender, received: mailCode.date))
                     }
                 }
@@ -123,7 +123,7 @@ final class VerificationCodeManager: ObservableObject {
             lastRowID = max(lastRowID ?? 0, maxRowID)
             guard !isFirstRead else { return }
             for message in messages.reversed() {
-                if let code = Self.extractCode(from: message.text) {
+                if Appearance.bool(Appearance.codesMessagesKey), let code = Self.extractCode(from: message.text) {
                     show(VerificationCode(code: code, sender: message.sender, received: message.date))
                     return
                 }

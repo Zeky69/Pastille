@@ -48,7 +48,7 @@ struct PillRootView: View {
         ZStack(alignment: .top) {
             if viewModel.isExpanded {
                 ExpandedPillView(viewModel: viewModel, onOpenSettings: onOpenSettings)
-                    .padding(.horizontal, 19 + 12)
+                    .padding(.horizontal, Appearance.horizontalPadding)
                     .frame(width: viewModel.expandedSize.width, height: viewModel.expandedSize.height)
                     .background {
                         if showsImmersiveBackground {

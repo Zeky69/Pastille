@@ -34,6 +34,7 @@ private struct AppearanceSettings: View {
     @AppStorage(Appearance.showCaffeineKey) private var showCaffeine = true
     @AppStorage(Appearance.showScreenshotsTabKey) private var showScreenshotsTab = true
     @AppStorage(Settings.showBatteryPercentKey) private var showBatteryPercent = true
+    @AppStorage(Appearance.weatherUnitKey) private var weatherUnit = "celsius"
 
     var body: some View {
         Form {
@@ -100,6 +101,14 @@ private struct AppearanceSettings: View {
 
             Section("En-tête") {
                 Toggle("Météo", isOn: custom($showWeather))
+                if showWeather {
+                    Picker("Unité", selection: $weatherUnit) {
+                        Text("°C").tag("celsius")
+                        Text("°F").tag("fahrenheit")
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 200)
+                }
                 Toggle("Appareils Bluetooth", isOn: custom($showBluetooth))
                 Toggle("Tasse de café", isOn: custom($showCaffeine))
                 Toggle("Pourcentage de batterie", isOn: custom($showBatteryPercent))
@@ -363,6 +372,13 @@ private struct ActivitySettings: View {
     @AppStorage(Appearance.codeActivityKey) private var code = true
     @AppStorage(Appearance.hudActivityKey) private var hud = true
     @AppStorage(Appearance.batteryAlertKey) private var battery = true
+    @AppStorage(Appearance.deviceConnectedKey) private var deviceConnected = true
+    @AppStorage(Appearance.powerKey) private var power = true
+    @AppStorage(Appearance.codesMessagesKey) private var codesMessages = true
+    @AppStorage(Appearance.codesMailKey) private var codesMail = true
+    @AppStorage(Appearance.musicPriorityKey) private var musicPriority = true
+    @AppStorage(Appearance.musicOtherAppsKey) private var musicOtherApps = true
+    @AppStorage(Appearance.musicSourceBadgeKey) private var sourceBadge = true
 
     var body: some View {
         Form {
@@ -373,9 +389,27 @@ private struct ActivitySettings: View {
                 row("key.fill", .green, "Codes de vérification", "Reçus par SMS, iMessage ou Mail.", $code)
                 row("speaker.wave.2.fill", .gray, "Volume et luminosité", "Remplace l'indicateur d'Apple (désactivé : celui d'Apple revient).", $hud)
                 row("battery.25", .red, "Batterie faible", "Alerte à 20 %, 10 % et 5 %.", $battery)
+                row("bolt.fill", .green, "Branchement et charge complète", "Éclair au branchement et au débranchement, « Chargé » à 100 %.", $power)
+                row("headphones", .indigo, "Appareil connecté", "Casque, AirPods ou clavier qui se connecte, avec sa batterie.", $deviceConnected)
             } header: {
                 Text("Ce qui peut s'afficher dans la pastille fermée")
             }
+
+            Section {
+                row("music.quarternote.3", .pink, "Priorité à la musique", "Une vidéo ne s'affiche que si aucune musique ne joue.", $musicPriority)
+                row("play.rectangle.fill", .red, "Son des autres apps", "YouTube dans le navigateur, vidéos, podcasts… (coupé : Musique, Spotify, Deezer… seulement).", $musicOtherApps)
+                row("app.badge.fill", .gray, "Icône de l'app sur la pochette", "Pour savoir d'où vient le son.", $sourceBadge)
+            } header: {
+                Text("Musique")
+            }
+
+            Section {
+                row("message.fill", .green, "Messages", "SMS et iMessages reçus sur le Mac.", $codesMessages)
+                row("envelope.fill", .blue, "Mail", "Mails reçus dans l'app Mail.", $codesMail)
+            } header: {
+                Text("Où chercher les codes de vérification")
+            }
+            .disabled(!code)
         }
         .formStyle(.grouped)
     }
@@ -523,6 +557,9 @@ private struct GeneralSettings: View {
     @AppStorage(Settings.hoverDelayKey) private var hoverDelay = 0.15
     @AppStorage(Settings.hapticsKey) private var haptics = true
     @AppStorage(Settings.hideInFullscreenKey) private var hideInFullscreen = true
+    @AppStorage(Settings.swipePagesKey) private var swipePages = true
+    @AppStorage(Settings.showMenuBarIconKey) private var showMenuBarIcon = true
+    @AppStorage(Settings.tidyDesktopScreenshotsKey) private var tidyDesktop = true
     @State private var confirmReset = false
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
@@ -537,10 +574,19 @@ private struct GeneralSettings: View {
                 }
                 Toggle("Retour haptique", isOn: $haptics)
                 Toggle("Se cacher pendant les apps en plein écran", isOn: $hideInFullscreen)
+                Toggle("Glisser à deux doigts pour changer de page", isOn: $swipePages)
+                Toggle("Icône dans la barre des menus", isOn: $showMenuBarIcon)
                 Toggle("Lancer à l'ouverture de session", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, enabled in
                         try? enabled ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
                     }
+            }
+            Section("Captures d'écran") {
+                LabeledContent("Dossier") {
+                    Button(ScreenshotManager.shared.folderName) { ScreenshotManager.shared.revealFolder() }
+                        .buttonStyle(.link)
+                }
+                Toggle("Ranger dans ce dossier les captures tombées sur le Bureau", isOn: $tidyDesktop)
             }
             Section {
                 HStack {

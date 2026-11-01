@@ -9,6 +9,8 @@ enum Settings {
     static let musicLiveActivityKey = "musicLiveActivity"
     static let showMenuBarIconKey = "showMenuBarIcon"
     static let hideInFullscreenKey = "hideInFullscreen"
+    static let swipePagesKey = "swipePages"
+    static let tidyDesktopScreenshotsKey = "tidyDesktopScreenshots"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -19,6 +21,8 @@ enum Settings {
             musicLiveActivityKey: true,
             showMenuBarIconKey: true,
             hideInFullscreenKey: true,
+            swipePagesKey: true,
+            tidyDesktopScreenshotsKey: true,
         ])
     }
 
@@ -26,6 +30,8 @@ enum Settings {
     static var hoverDelay: Double { UserDefaults.standard.double(forKey: hoverDelayKey) }
     static var haptics: Bool { UserDefaults.standard.bool(forKey: hapticsKey) }
     static var musicLiveActivity: Bool { UserDefaults.standard.bool(forKey: musicLiveActivityKey) }
+    static var swipePages: Bool { UserDefaults.standard.bool(forKey: swipePagesKey) }
+    static var tidyDesktopScreenshots: Bool { UserDefaults.standard.bool(forKey: tidyDesktopScreenshotsKey) }
     static var hideInFullscreen: Bool { UserDefaults.standard.bool(forKey: hideInFullscreenKey) }
     static var showMenuBarIcon: Bool { UserDefaults.standard.bool(forKey: showMenuBarIconKey) }
 }

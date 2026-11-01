@@ -64,6 +64,10 @@ final class MusicManager: ObservableObject {
     private var playersPoll: Timer?
 
     func start() {
+        // Réglages de priorité ou de sources modifiés : on refait le choix tout de suite.
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { MusicManager.shared.decide() }
+        }
         legacy.start { info in MusicManager.shared.receivePlayers(info) }
         // Pendant qu'un morceau Musique/Spotify est affiché et joue, on recale sa position de temps en temps.
         playersPoll = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
@@ -196,9 +200,14 @@ final class MusicManager: ObservableObject {
         func has(_ info: [String: Any]) -> Bool { !((info["title"] as? String) ?? "").isEmpty }
         func playing(_ info: [String: Any]) -> Bool { (info["playing"] as? NSNumber)?.boolValue ?? false }
         let nowPlayingIsMusic = (nowPlaying["bundle"] as? String).map(Self.musicApps.contains) ?? false
+        // Réglage « son des autres apps » coupé : une vidéo ou un navigateur est ignoré.
+        let nowPlaying = nowPlayingIsMusic || Appearance.bool(Appearance.musicOtherAppsKey) ? self.nowPlaying : [:]
 
         let usePlayers: Bool
-        if has(nowPlaying), nowPlayingIsMusic, playing(nowPlaying) || !playing(players) {
+        if !Appearance.bool(Appearance.musicPriorityKey) {
+            // Sans priorité : ce que macOS montre, sauf s'il est en pause alors que Musique/Spotify joue.
+            usePlayers = !has(nowPlaying) || (!playing(nowPlaying) && playing(players))
+        } else if has(nowPlaying), nowPlayingIsMusic, playing(nowPlaying) || !playing(players) {
             usePlayers = false
         } else if has(players), playing(players) {
             usePlayers = true

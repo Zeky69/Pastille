@@ -83,6 +83,15 @@ final class ScreenshotManager: ObservableObject {
         thumbnails.removeAll()
     }
 
+    /// Nom du dossier des captures (réglé dans macOS : ⌘⇧5 › Options), pour les réglages.
+    var folderName: String {
+        folder.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")
+    }
+
+    func revealFolder() {
+        NSWorkspace.shared.open(folder)
+    }
+
     func reveal(_ shot: Screenshot) {
         NSWorkspace.shared.activateFileViewerSelecting([shot.url])
     }
@@ -129,6 +138,7 @@ final class ScreenshotManager: ObservableObject {
         let since = trackingSince
         let hidden = hidden
         let extensions = imageExtensions
+        let tidy = Settings.tidyDesktopScreenshots
         DispatchQueue.global(qos: .utility).async {
             let keys: [URLResourceKey] = [.creationDateKey, .isRegularFileKey]
             func captures(in directory: URL) -> [Screenshot] {
@@ -146,7 +156,7 @@ final class ScreenshotManager: ObservableObject {
             }
 
             // Une capture tombée sur le Bureau malgré le réglage est rangée dans le bon dossier.
-            if desktop != folder {
+            if tidy, desktop != folder {
                 for shot in captures(in: desktop) {
                     let target = folder.appendingPathComponent(shot.url.lastPathComponent)
                     try? FileManager.default.moveItem(at: shot.url, to: target)

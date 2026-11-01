@@ -5,10 +5,16 @@ struct ExpandedPillView: View {
     var onOpenSettings: () -> Void
     @AppStorage(Appearance.homeLayoutKey) private var layoutRaw = Appearance.HomeLayout.musicAndCalendar.rawValue
     @AppStorage(Appearance.showScreenshotsTabKey) private var showScreenshotsTab = true
+    @AppStorage(Appearance.musicStyleKey) private var musicStyleRaw = Appearance.MusicStyle.artwork.rawValue
     @AppStorage(Appearance.showBluetoothKey) private var showBluetooth = true
     @AppStorage(Appearance.showCaffeineKey) private var showCaffeine = true
 
     private var tabs: [PillTab] { showScreenshotsTab ? PillTab.allCases : [.home] }
+
+    /// Lecteur compact seul : la pastille est plus étroite, l'en-tête se resserre.
+    private var compact: Bool {
+        layoutRaw == Appearance.HomeLayout.musicOnly.rawValue && musicStyleRaw == Appearance.MusicStyle.compact.rawValue
+    }
 
     /// La page entrante arrive du côté vers lequel on va.
     private var pageTransition: AnyTransition {
@@ -57,7 +63,7 @@ struct ExpandedPillView: View {
     /// Bandeau supérieur à hauteur de la découpe : onglets et météo à gauche ; appareils Bluetooth, batterie et réglages à droite.
     private var header: some View {
         HStack(spacing: 0) {
-            HStack(spacing: 6) {
+            HStack(spacing: compact ? 3 : 6) {
                 ForEach(tabs) { tab in
                     TabButton(tab: tab, isSelected: viewModel.tab == tab) {
                         viewModel.select(tab)
@@ -72,7 +78,7 @@ struct ExpandedPillView: View {
 
             Color.clear.frame(width: viewModel.cutoutSize.width)
 
-            HStack(spacing: 10) {
+            HStack(spacing: compact ? 6 : 10) {
                 // Collés à l'encoche ; la batterie du Mac reste au bord droit.
                 if showBluetooth {
                     BluetoothDevicesView()

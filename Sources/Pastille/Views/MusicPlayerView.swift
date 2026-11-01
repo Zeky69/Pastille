@@ -179,9 +179,10 @@ struct MusicPlayerView: View {
 private struct SourceBadge: View {
     let size: CGFloat
     @ObservedObject private var music = MusicManager.shared
+    @AppStorage(Appearance.musicSourceBadgeKey) private var enabled = true
 
     var body: some View {
-        if music.track != nil, let source = music.source, let icon = source.icon {
+        if enabled, music.track != nil, let source = music.source, let icon = source.icon {
             Image(nsImage: icon)
                 .resizable()
                 .frame(width: size, height: size)

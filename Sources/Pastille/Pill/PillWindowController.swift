@@ -209,7 +209,7 @@ final class PillWindowController {
     /// Les listes qui défilent elles-mêmes (captures, frise des jours) gardent leur geste.
     /// Renvoie true si le geste a changé de page (l'événement est alors absorbé).
     private func consumesSwipe(_ event: NSEvent) -> Bool {
-        guard viewModel.isExpanded, event.window === panel, event.hasPreciseScrollingDeltas,
+        guard Settings.swipePages, viewModel.isExpanded, event.window === panel, event.hasPreciseScrollingDeltas,
               event.momentumPhase.isEmpty else { return false }
 
         if event.phase.contains(.began) {

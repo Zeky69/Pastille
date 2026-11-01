@@ -20,11 +20,21 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
     private var coordinate: CLLocationCoordinate2D?
     private var lastFetch: Date?
     private var poll: Timer?
+    private var unit: String?
     private static let refreshInterval: TimeInterval = 30 * 60
 
     func start() {
         location.delegate = self
         location.desiredAccuracy = kCLLocationAccuracyKilometer
+        // Changement d'unité (°C / °F) : nouvelle lecture tout de suite.
+        unit = UserDefaults.standard.string(forKey: Appearance.weatherUnitKey)
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                let manager = WeatherManager.shared
+                let unit = UserDefaults.standard.string(forKey: Appearance.weatherUnitKey)
+                if unit != manager.unit { manager.unit = unit; manager.fetch() }
+            }
+        }
         location.requestWhenInUseAuthorization()
         // Position demandée une fois par mise à jour (pas de suivi continu) ; la météo suit.
         location.requestLocation()
@@ -49,6 +59,7 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
             .init(name: "latitude", value: String(format: "%.2f", coordinate.latitude)),
             .init(name: "longitude", value: String(format: "%.2f", coordinate.longitude)),
             .init(name: "current", value: "temperature_2m,weather_code,is_day"),
+            .init(name: "temperature_unit", value: UserDefaults.standard.string(forKey: Appearance.weatherUnitKey) ?? "celsius"),
         ]
         URLSession.shared.dataTask(with: components.url!) { data, _, _ in
             guard let data,

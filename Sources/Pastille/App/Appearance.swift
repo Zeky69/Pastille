@@ -20,6 +20,14 @@ enum Appearance {
     static let codeActivityKey = "activity.code"
     static let hudActivityKey = "activity.hud"
     static let batteryAlertKey = "activity.batteryAlert"
+    static let deviceConnectedKey = "activity.deviceConnected"
+    static let powerKey = "activity.power"
+    static let codesMessagesKey = "codes.messages"
+    static let codesMailKey = "codes.mail"
+    static let musicPriorityKey = "music.priority"
+    static let musicOtherAppsKey = "music.otherApps"
+    static let musicSourceBadgeKey = "music.sourceBadge"
+    static let weatherUnitKey = "weather.unit"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -38,6 +46,14 @@ enum Appearance {
             codeActivityKey: true,
             hudActivityKey: true,
             batteryAlertKey: true,
+            deviceConnectedKey: true,
+            powerKey: true,
+            codesMessagesKey: true,
+            codesMailKey: true,
+            musicPriorityKey: true,
+            musicOtherAppsKey: true,
+            musicSourceBadgeKey: true,
+            weatherUnitKey: "celsius",
         ])
     }
 
@@ -57,11 +73,22 @@ enum Appearance {
 
     /// Taille de la pastille ouverte : celle du réglage, sauf avec le lecteur seul,
     /// où le style décide (compact : bien plus petite ; vinyle et immersif : un peu plus haute).
-    static var expandedSize: CGSize {
+    /// Lecteur compact seul : en-tête et marges resserrés.
+    static var isCompactLayout: Bool { homeLayout == .musicOnly && musicStyle == .compact }
+
+    /// Marge intérieure gauche et droite de la pastille ouverte.
+    static var horizontalPadding: CGFloat { isCompactLayout ? 19 + 3 : 19 + 12 }
+
+    /// `cutout` : taille de l'encoche, qui sert d'en-tête à la pastille ouverte.
+    static func expandedSize(cutout: CGSize) -> CGSize {
+        let cutoutHeight = cutout.height
         let base = size.expanded
         guard homeLayout == .musicOnly else { return base }
         switch musicStyle {
-        case .compact: return CGSize(width: base.width - 140, height: 118)
+        // En-tête + 6 pt + une ligne de 38 pt, 8 pt, barre de 9 pt + 12 pt de marge basse : rien de plus.
+        // Largeur : de chaque côté de l'encoche, la place de l'en-tête resserré (onglets + météo à gauche ;
+        // Bluetooth, café, batterie, réglages à droite), plus les marges réduites de la pastille.
+        case .compact: return CGSize(width: cutout.width + 2 * 135 + 2 * horizontalPadding, height: cutoutHeight + 6 + 55 + 12)
         case .vinyl, .immersive: return CGSize(width: base.width - 60, height: base.height + 20)
         case .poster: return CGSize(width: base.width - 40, height: base.height + 30)
         case .artwork: return base
@@ -277,6 +304,8 @@ enum Appearance {
     static func resetToDefaults() {
         let defaults = UserDefaults.standard
         for key in [clockActivityKey, downloadActivityKey, codeActivityKey, hudActivityKey, batteryAlertKey,
+                    deviceConnectedKey, powerKey, codesMessagesKey, codesMailKey,
+                    musicPriorityKey, musicOtherAppsKey, musicSourceBadgeKey, weatherUnitKey,
                     Settings.musicLiveActivityKey, Settings.showBatteryPercentKey] {
             defaults.removeObject(forKey: key)
         }

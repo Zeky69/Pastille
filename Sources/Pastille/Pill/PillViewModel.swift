@@ -100,7 +100,7 @@ final class PillViewModel: ObservableObject {
     }
 
     /// Taille ouverte, selon les réglages « Taille » et « Lecteur » (normale : 640 × 190).
-    @Published private(set) var expandedSize = Appearance.expandedSize
+    @Published private(set) var expandedSize = Appearance.expandedSize(cutout: CGSize(width: 185, height: 32))
     /// Appelé quand la taille ouverte change, pour redimensionner la fenêtre.
     var onExpandedSizeChange: (() -> Void)?
 
@@ -119,11 +119,7 @@ final class PillViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self else { return }
-                let size = Appearance.expandedSize
-                if size != self.expandedSize {
-                    self.expandedSize = size
-                    self.onExpandedSizeChange?()
-                }
+                self.refreshExpandedSize()
                 if !Appearance.bool(Appearance.showScreenshotsTabKey), self.tab == .screenshots { self.tab = .home }
                 self.refreshLiveActivity()
             }
@@ -184,7 +180,9 @@ final class PillViewModel: ObservableObject {
 
         BluetoothManager.shared.connections
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] device in self?.enqueue(.deviceConnected(device)) }
+            .sink { [weak self] device in
+                if Appearance.bool(Appearance.deviceConnectedKey) { self?.enqueue(.deviceConnected(device)) }
+            }
             .store(in: &cancellables)
 
         // La batterie d'un appareil qui vient de se connecter arrive après coup : on redessine.
@@ -200,7 +198,7 @@ final class PillViewModel: ObservableObject {
             .sink { [weak self] event in
                 switch event {
                 case .full:
-                    self?.enqueue(.charged)
+                    if Appearance.bool(Appearance.powerKey) { self?.enqueue(.charged) }
                 case .low(let threshold):
                     if Appearance.bool(Appearance.batteryAlertKey) { self?.enqueue(.lowBattery(threshold)) }
                 }
@@ -218,7 +216,7 @@ final class PillViewModel: ObservableObject {
             .sink { [weak self] plugged in
                 // Branché : l'alerte de batterie faible n'a plus lieu d'être.
                 if plugged { self?.dropMoments { if case .lowBattery = $0 { true } else { false } } }
-                self?.enqueue(plugged ? .charging : .unplugged)
+                if Appearance.bool(Appearance.powerKey) { self?.enqueue(plugged ? .charging : .unplugged) }
             }
             .store(in: &cancellables)
     }
@@ -258,7 +256,15 @@ final class PillViewModel: ObservableObject {
 
     var currentSize: CGSize { isExpanded ? expandedSize : compactSize }
 
+    private func refreshExpandedSize() {
+        let size = Appearance.expandedSize(cutout: cutoutSize)
+        guard size != expandedSize else { return }
+        expandedSize = size
+        onExpandedSizeChange?()
+    }
+
     func update(for screen: NSScreen) {
+        defer { refreshExpandedSize() }
         let inset = screen.safeAreaInsets.top
         if inset > 0,
            let left = screen.auxiliaryTopLeftArea?.width,

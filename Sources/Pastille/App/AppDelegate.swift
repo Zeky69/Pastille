@@ -51,6 +51,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.menu = menu
         item.isVisible = Settings.showMenuBarIcon
         statusItem = item
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                if self?.statusItem?.isVisible != Settings.showMenuBarIcon { self?.statusItem?.isVisible = Settings.showMenuBarIcon }
+            }
+        }
     }
 
     @objc func openSettings() {
