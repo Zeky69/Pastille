@@ -47,18 +47,19 @@ private struct WheelCalendar: View {
                         .fontWeight(.light)
                         .foregroundStyle(secondary)
                 }
-                ZStack {
-                    DayWheel(selectedDate: $calendar.selectedDate)
-                        .blocksPageSwipe("dayWheel")
-                    HStack {
-                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                            .frame(width: 20)
-                        Spacer()
-                        LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
-                            .frame(width: 20)
+                // Bords en fondu par transparence (et non par un dégradé noir posé dessus) : propre aussi
+                // sur le fond coloré du style Immersif.
+                DayWheel(selectedDate: $calendar.selectedDate)
+                    .blocksPageSwipe("dayWheel")
+                    .mask {
+                        HStack(spacing: 0) {
+                            LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                                .frame(width: 20)
+                            Color.black
+                            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                                .frame(width: 20)
+                        }
                     }
-                    .allowsHitTesting(false)
-                }
             }
             .frame(height: 50)
 
