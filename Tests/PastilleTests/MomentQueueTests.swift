@@ -74,7 +74,7 @@ import Testing
 
     @Test func durationsArePositive() {
         let all: [Moment] = [.charging, .unplugged, .charged, .lowBattery(5), .deviceConnected(airPods()),
-                             .caffeine(true), .timerDone, .newTrack(track, nil)]
+                             .caffeine(true), .timerDone, .newTrack(track, nil), .update("0.2.0")]
         for moment in all {
             #expect(moment.duration > 0)
             #expect(moment.replaces(moment))

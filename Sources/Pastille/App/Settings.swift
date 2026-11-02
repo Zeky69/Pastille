@@ -11,6 +11,7 @@ enum Settings {
     static let hideInFullscreenKey = "hideInFullscreen"
     static let swipePagesKey = "swipePages"
     static let tidyDesktopScreenshotsKey = "tidyDesktopScreenshots"
+    static let checkForUpdatesKey = "checkForUpdates"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -23,6 +24,7 @@ enum Settings {
             hideInFullscreenKey: true,
             swipePagesKey: true,
             tidyDesktopScreenshotsKey: true,
+            checkForUpdatesKey: true,
         ])
     }
 
@@ -34,4 +36,5 @@ enum Settings {
     static var tidyDesktopScreenshots: Bool { UserDefaults.standard.bool(forKey: tidyDesktopScreenshotsKey) }
     static var hideInFullscreen: Bool { UserDefaults.standard.bool(forKey: hideInFullscreenKey) }
     static var showMenuBarIcon: Bool { UserDefaults.standard.bool(forKey: showMenuBarIconKey) }
+    static var checkForUpdates: Bool { UserDefaults.standard.bool(forKey: checkForUpdatesKey) }
 }

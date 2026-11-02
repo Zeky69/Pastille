@@ -81,7 +81,24 @@ Léger : environ **0 %** de CPU au repos, **1 %** avec la musique.
 
 ## 🚀 Installation
 
-**Prérequis** : un Mac avec macOS 14 (Sonoma) ou plus récent. Liquid Glass demande macOS 26.
+**Prérequis** : un Mac à encoche (Apple Silicon) avec macOS 14 (Sonoma) ou plus récent. Liquid Glass demande macOS 26.
+
+### Télécharger
+
+1. Télécharge `Pastille-<version>.zip` depuis la page [Releases](https://github.com/Zeky69/Pastille/releases/latest), ouvre-le et glisse **Pastille** dans **Applications**.
+2. Pastille n'est pas certifiée par Apple (ça demande un compte développeur payant) : avant de l'ouvrir la première fois, retire la marque « téléchargé d'Internet » dans le Terminal :
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Pastille.app
+   ```
+
+3. Ouvre Pastille depuis Applications.
+
+Ensuite, Pastille se met à jour toute seule : elle annonce les nouvelles versions et les installe en un clic (**Réglages › Général › Mises à jour**, ou l'icône de la barre des menus). Chaque mise à jour est signée, et Pastille refuse toute archive dont la signature ne correspond pas.
+
+> Sans l'étape 2, macOS refuse d'ouvrir l'app ; et même ouverte avec **Réglages Système › Confidentialité et sécurité › Ouvrir quand même**, la musique des navigateurs et des autres apps (« À l'écoute ») ne marcherait pas. La commande ne touche qu'à Pastille.
+
+### Compiler soi-même
 
 ```bash
 git clone https://github.com/Zeky69/Pastille.git
@@ -90,6 +107,8 @@ cd Pastille
 ```
 
 `build.sh install` lance d'abord les tests (`swift test`), puis compile Pastille, l'installe dans `/Applications` et la lance. Si un test échoue, rien n'est installé.
+
+### Autorisations
 
 Au premier lancement, macOS demande quelques autorisations. Chacune ne sert qu'à une fonction, et l'onglet **Réglages › Autorisations** montre leur état avec un raccourci pour les accorder :
 
@@ -100,9 +119,17 @@ Au premier lancement, macOS demande quelques autorisations. Chacune ne sert qu'�
 | Accès complet au disque | Lire les codes dans Messages et Mail |
 | Calendrier, Localisation, Bluetooth | Agenda, météo, batterie des appareils |
 
-> Tout est lu **en local**. Pastille n'envoie rien, sauf des coordonnées arrondies (~1 km) au service météo Open-Meteo.
+> Tout est lu **en local**. Pastille n'envoie rien, sauf des coordonnées arrondies (~1 km) au service météo Open-Meteo, et une demande à GitHub pour savoir s'il existe une nouvelle version (désactivable dans les Réglages).
 
 ---
+
+## 📦 Publier une version
+
+1. Change `CFBundleShortVersionString` dans `Support/Info.plist` et écris les notes dans `docs/releases/<version>.md`.
+2. Commite et envoie (`git push`).
+3. `./build.sh publish` : tests, compilation, archive signée, puis release GitHub avec `gh`.
+
+La signature utilise la clé privée `~/.config/pastille/update-signing-key`, créée au premier `./build.sh release`. Elle ne doit jamais entrer dans le dépôt : garde-en une copie, car sans elle les Pastille déjà installées refuseront les mises à jour suivantes.
 
 ## ⚠️ À savoir
 

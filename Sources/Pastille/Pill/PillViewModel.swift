@@ -199,6 +199,11 @@ final class PillViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        UpdateManager.shared.announced
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] version in self?.enqueue(.update(version)) }
+            .store(in: &cancellables)
+
         CaffeineManager.shared.toggled
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isOn in self?.enqueue(.caffeine(isOn)) }
@@ -236,6 +241,8 @@ final class PillViewModel: ObservableObject {
         // Pastille fermée : flèche + total court (« 812 Mo ») quand l'app ne donne pas de pourcentage.
         case .download: DownloadManager.shared.measure != nil ? 58 : cutoutSize.height + 6
         case .caffeine: 58
+        // Flèche + numéro de version (« 0.2.0 »).
+        case .update: 60
         case .charged: 60
         case .timerDone: 68
         case .newTrack: newTrackSideWidth

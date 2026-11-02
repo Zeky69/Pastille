@@ -137,6 +137,12 @@ struct CompactPillView: View {
                 .contentTransition(.symbolEffect(.replace))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 12)
+        case .update:
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.blue)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 12)
         case .caffeine:
             Image(systemName: caffeineOn ? "cup.and.saucer.fill" : "cup.and.saucer")
                 .font(.system(size: 13, weight: .semibold))
@@ -265,6 +271,15 @@ struct CompactPillView: View {
                 Text(code.code)
                     .font(.system(size: 12, weight: .semibold).monospacedDigit())
                     .foregroundStyle(.white)
+                    .fixedSize()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 12)
+            }
+        case .update:
+            if case let .update(version) = viewModel.moment {
+                Text(version)
+                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.blue)
                     .fixedSize()
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .padding(.trailing, 12)

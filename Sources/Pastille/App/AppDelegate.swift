@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         WeatherManager.shared.start()
         DownloadManager.shared.start()
         VerificationCodeManager.shared.start()
+        UpdateManager.shared.start()
 
         pillController = PillWindowController()
         pillController?.onOpenSettings = { [weak self] in self?.openSettings() }
@@ -44,6 +45,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = NSImage(systemSymbolName: "capsule.fill", accessibilityDescription: "Pastille")
         let menu = NSMenu()
+        let update = NSMenuItem(title: "Rechercher les mises à jour…", action: #selector(updateMenuClicked), keyEquivalent: "")
+        update.target = self
+        updateMenuItem = update
+        menu.addItem(update)
+        menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Réglages…", action: #selector(openSettings), keyEquivalent: ","))
         let launch = NSMenuItem(title: "Ouvrir au démarrage du Mac", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         launch.target = self
@@ -64,10 +70,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private var launchMenuItem: NSMenuItem?
+    private var updateMenuItem: NSMenuItem?
 
     /// Coche à jour à chaque ouverture du menu (l'état peut changer depuis Réglages Système).
     func menuWillOpen(_ menu: NSMenu) {
         launchMenuItem?.state = LaunchAtLogin.isEnabled ? .on : .off
+        updateMenuItem?.title = switch UpdateManager.shared.state {
+        case let .available(release): "Installer Pastille \(release.version)"
+        case .installing: "Installation de la mise à jour…"
+        case .checking: "Recherche de mises à jour…"
+        default: "Rechercher les mises à jour…"
+        }
+    }
+
+    /// Mise à jour trouvée : on l'installe ; sinon on cherche, et le résultat s'affiche dans les Réglages.
+    @objc private func updateMenuClicked() {
+        let updates = UpdateManager.shared
+        if updates.available != nil {
+            updates.install()
+        } else {
+            updates.check()
+            openSettings()
+        }
     }
 
     @objc private func toggleLaunchAtLogin() {

@@ -24,6 +24,8 @@ enum Moment: Equatable {
     case caffeine(Bool)
     case timerDone
     case newTrack(Track, NSImage?)
+    /// Nouvelle version de Pastille disponible.
+    case update(String)
 
     var activity: LiveActivity {
         switch self {
@@ -35,6 +37,7 @@ enum Moment: Equatable {
         case .caffeine: .caffeine
         case .timerDone: .timerDone
         case .newTrack: .newTrack
+        case .update: .update
         }
     }
 
@@ -46,6 +49,7 @@ enum Moment: Equatable {
         case .caffeine: 2
         case .timerDone: 5
         case .newTrack: 2.5
+        case .update: 5
         }
     }
 
@@ -54,7 +58,7 @@ enum Moment: Equatable {
         switch (self, other) {
         case (.charging, .charging), (.charging, .unplugged), (.unplugged, .unplugged), (.unplugged, .charging),
              (.charged, .charged), (.lowBattery, .lowBattery), (.caffeine, .caffeine),
-             (.timerDone, .timerDone), (.newTrack, .newTrack):
+             (.timerDone, .timerDone), (.newTrack, .newTrack), (.update, .update):
             true
         case let (.deviceConnected(a), .deviceConnected(b)):
             a.id == b.id
@@ -65,4 +69,4 @@ enum Moment: Equatable {
 }
 
 /// Activité affichée de part et d'autre de la pastille compacte (façon « Live Activity »).
-enum LiveActivity: Equatable { case none, music, charging, unplugged, charged, deviceConnected, lowBattery, timer, timerDone, stopwatch, newTrack, download, caffeine, code, hud }
+enum LiveActivity: Equatable { case none, music, charging, unplugged, charged, deviceConnected, lowBattery, timer, timerDone, stopwatch, newTrack, download, caffeine, code, hud, update }
