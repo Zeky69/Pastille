@@ -61,7 +61,7 @@ final class MusicManager: ObservableObject {
     private var showsPlayers = false
     /// Pochettes déjà vues (« titre|artiste »), pour retrouver celle d'un morceau Apple Music
     /// quand macOS est passé à une autre source et qu'AppleScript ne la donne pas.
-    private var artworkCache: [String: NSImage] = [:]
+    private var artworkCache = BoundedCache<String, NSImage>(capacity: 30)
 
     private var stream: Process?
     private var buffer = Data()
@@ -101,12 +101,17 @@ final class MusicManager: ObservableObject {
         "com.brave.Browser", "com.google.Chrome", "com.microsoft.edgemac", "company.thebrowser.Browser", "com.vivaldi.Vivaldi",
     ]
 
+    /// Texte placé entre guillemets dans un AppleScript : le titre vient d'une page web, il ne doit
+    /// jamais pouvoir sortir de sa chaîne (et exécuter autre chose).
+    nonisolated static func appleScriptEscaped(_ text: String) -> String {
+        text.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
     /// Ouvre l'app d'où vient le son ; pour un navigateur, va directement sur l'onglet qui joue.
     func openSource() {
         guard let bundleID = source?.bundleID else { return }
-        let title = String((track?.title ?? "").prefix(40))
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+        let title = Self.appleScriptEscaped(String((track?.title ?? "").prefix(40)))
         let script: String?
         if Self.chromiumBrowsers.contains(bundleID), !title.isEmpty {
             script = """
@@ -150,7 +155,7 @@ final class MusicManager: ObservableObject {
             }
             return
         }
-        DispatchQueue.global(qos: .userInitiated).async {
+        LegacyPlayers.appleScriptQueue.async {
             var error: NSDictionary?
             NSAppleScript(source: script)?.executeAndReturnError(&error)
             // Refus d'automatisation ou onglet introuvable : on ouvre au moins l'app.
@@ -403,157 +408,3 @@ final class MusicManager: ObservableObject {
 }
 
 // MARK: - Musique et Spotify (AppleScript)
-
-/// Interroge Musique et Spotify directement. Ils préviennent eux-mêmes à chaque lecture, pause ou
-/// changement de morceau (notifications), donc rien ne tourne en continu.
-@MainActor
-private final class LegacyPlayers {
-    private enum Player: String, CaseIterable {
-        case spotify = "com.spotify.client"
-        case music = "com.apple.Music"
-
-        var name: String { self == .spotify ? "Spotify" : "Musique" }
-        var notification: String {
-            self == .spotify ? "com.spotify.client.PlaybackStateChanged" : "com.apple.Music.playerInfo"
-        }
-        var isRunning: Bool { !NSRunningApplication.runningApplications(withBundleIdentifier: rawValue).isEmpty }
-    }
-
-    private var current: Player?
-    private var onChange: (([String: Any]) -> Void)?
-    /// Pochettes Spotify déjà téléchargées, par adresse.
-    private var spotifyArtwork: [String: NSImage] = [:]
-    private let queue = DispatchQueue(label: "pastille.applescript")
-
-    func start(onChange: @escaping ([String: Any]) -> Void) {
-        self.onChange = onChange
-        for player in Player.allCases {
-            DistributedNotificationCenter.default().addObserver(forName: .init(player.notification), object: nil, queue: .main) { _ in
-                MainActor.assumeIsolated { self.refresh() }
-            }
-        }
-        // App quittée : elle ne prévient pas toujours.
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
-        ) { note in
-            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            guard let id = app?.bundleIdentifier, Player(rawValue: id) != nil else { return }
-            MainActor.assumeIsolated { self.refresh() }
-        }
-        refresh()
-    }
-
-    func send(_ command: String) {
-        guard let current else { return }
-        let script: String
-        switch command {
-        case "toggle": script = "playpause"
-        case "next": script = "next track"
-        case "previous": script = "previous track"
-        default:
-            guard command.hasPrefix("seek:") else { return }
-            script = "set player position to \(command.dropFirst(5))"
-        }
-        let source = "tell application id \"\(current.rawValue)\" to \(script)"
-        queue.async {
-            var error: NSDictionary?
-            NSAppleScript(source: source)?.executeAndReturnError(&error)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { MainActor.assumeIsolated { self.refresh() } }
-        }
-    }
-
-    func refresh() {
-        let running = Player.allCases.filter(\.isRunning)
-        let preferred = current
-        let cache = spotifyArtwork
-        queue.async {
-            let results = running.compactMap { player in Self.query(player).map { (player, $0) } }
-            let best = results.first { $0.1["playing"] as? Bool == true }
-                ?? results.first { $0.0 == preferred }
-                ?? results.first
-            var info = best?.1 ?? [:]
-            // Pochette Spotify : téléchargée une fois par adresse.
-            if let url = info["artworkURL"] as? String {
-                if let image = cache[url] {
-                    info["image"] = image
-                } else if let link = URL(string: url), let data = try? Data(contentsOf: link), let image = NSImage(data: data) {
-                    info["image"] = image
-                    info["newArtworkURL"] = url
-                }
-            }
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    self.current = best?.0
-                    if let url = info["newArtworkURL"] as? String { self.spotifyArtwork[url] = info["image"] as? NSImage }
-                    self.onChange?(info)
-                }
-            }
-        }
-    }
-
-    nonisolated private static func query(_ player: Player) -> [String: Any]? {
-        let artwork = player == .spotify ? "artwork url of t" : "\"\""
-        let duration = player == .spotify ? "(duration of t) / 1000" : "duration of t"
-        let source = """
-        tell application id "\(player.rawValue)"
-            set s to player state as string
-            if s is "stopped" then return {s}
-            set t to current track
-            return {s, name of t, artist of t, album of t, \(duration), player position, \(artwork)}
-        end tell
-        """
-        var error: NSDictionary?
-        guard let result = NSAppleScript(source: source)?.executeAndReturnError(&error),
-              result.numberOfItems >= 7 else { return nil }
-        var info: [String: Any] = [
-            "title": result.atIndex(2)?.stringValue ?? "",
-            "artist": result.atIndex(3)?.stringValue ?? "",
-            "album": result.atIndex(4)?.stringValue ?? "",
-            "duration": result.atIndex(5)?.doubleValue ?? 0,
-            "elapsed": result.atIndex(6)?.doubleValue ?? 0,
-            "playing": result.atIndex(1)?.stringValue == "playing",
-            "app": player.name,
-            "bundle": player.rawValue,
-        ]
-        if let url = result.atIndex(7)?.stringValue, !url.isEmpty { info["artworkURL"] = url }
-        return info
-    }
-}
-
-extension NSImage {
-    /// Version très floue et plus saturée, réduite à 64 px : agrandie, elle reste lisse, et son calcul
-    /// ne coûte presque rien (une fois par pochette).
-    func blurredBackground() -> NSImage? {
-        guard let cg = cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
-        let input = CIImage(cgImage: cg)
-        let scale = 64 / max(input.extent.width, input.extent.height)
-        let small = input.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-        let blurred = small.clampedToExtent()
-            .applyingGaussianBlur(sigma: 5)
-            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 1.4])
-            .cropped(to: small.extent)
-        guard let output = CIContext().createCGImage(blurred, from: blurred.extent) else { return nil }
-        return NSImage(cgImage: output, size: NSSize(width: output.width, height: output.height))
-    }
-
-    /// Couleur moyenne (sert d'accent pour le visualiseur et la barre de progression).
-    var averageColor: NSColor? {
-        guard let cg = cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
-        var pixel = [UInt8](repeating: 0, count: 4)
-        guard let ctx = CGContext(
-            data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-        ctx.interpolationQuality = .medium
-        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: 1, height: 1))
-        let color = NSColor(
-            red: CGFloat(pixel[0]) / 255, green: CGFloat(pixel[1]) / 255,
-            blue: CGFloat(pixel[2]) / 255, alpha: 1
-        )
-        // On éclaircit les couleurs trop sombres pour qu'elles restent visibles sur fond noir.
-        return color.brightnessComponent < 0.5
-            ? NSColor(hue: color.hueComponent, saturation: color.saturationComponent, brightness: 0.75, alpha: 1)
-            : color
-    }
-}

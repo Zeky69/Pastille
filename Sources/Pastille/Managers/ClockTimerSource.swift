@@ -40,7 +40,7 @@ enum ClockTimerSource {
         }
     }
 
-    private static func parse(_ timer: [String: Any], now: Date) -> ClockTimer? {
+    static func parse(_ timer: [String: Any], now: Date) -> ClockTimer? {
         guard let raw = timer["MTTimerState"] as? Int,
               let state = State(rawValue: raw), state != .stopped,
               let duration = timer["MTTimerDuration"] as? Double, duration > 0,

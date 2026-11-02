@@ -196,7 +196,7 @@ final class HUDManager: ObservableObject {
     }
 
     /// Arrondit au cran le plus proche, entre 0 et 1.
-    nonisolated private static func snap(_ value: Float, _ step: Float) -> Float {
+    nonisolated static func snap(_ value: Float, _ step: Float) -> Float {
         min(max((value / step).rounded() * step, 0), 1)
     }
 

@@ -89,7 +89,7 @@ cd Pastille
 ./build.sh install
 ```
 
-`build.sh install` compile Pastille, l'installe dans `/Applications` et la lance.
+`build.sh install` lance d'abord les tests (`swift test`), puis compile Pastille, l'installe dans `/Applications` et la lance. Si un test échoue, rien n'est installé.
 
 Au premier lancement, macOS demande quelques autorisations. Chacune ne sert qu'à une fonction, et l'onglet **Réglages › Autorisations** montre leur état avec un raccourci pour les accorder :
 

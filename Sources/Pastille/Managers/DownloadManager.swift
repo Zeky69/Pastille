@@ -118,17 +118,23 @@ final class DownloadManager: ObservableObject {
     }
 
     /// Taille la plus courte possible : une décimale sous 10 (« 2,5 Mo », « 1,2 Go »), sinon un entier (« 812 Mo »).
-    private static func short(_ bytes: Double) -> String {
+    nonisolated static func short(_ bytes: Double) -> String {
         let units = ["o", "Ko", "Mo", "Go", "To"]
-        var value = bytes
+        var value = max(bytes, 0)
         var index = 0
-        while value >= 1000, index < units.count - 1 {
+        // On arrondit comme à l'affichage avant de choisir l'unité : 999,6 Mo devient « 1,0 Go »
+        // (pas « 1000 Mo »), 9,96 Mo devient « 10 Mo » (pas « 10,0 Mo »).
+        func rounded(_ value: Double, _ index: Int) -> Double {
+            index >= 2 && value < 10 ? (value * 10).rounded() / 10 : value.rounded()
+        }
+        while rounded(value, index) >= 1000, index < units.count - 1 {
             value /= 1000
             index += 1
         }
-        let number = value < 10 && index >= 2
-            ? String(format: "%.1f", value).replacingOccurrences(of: ".", with: ",")
-            : String(Int(value.rounded()))
+        let shown = rounded(value, index)
+        let number = shown < 10 && index >= 2
+            ? String(format: "%.1f", shown).replacingOccurrences(of: ".", with: ",")
+            : String(Int(shown))
         return "\(number) \(units[index])"
     }
 

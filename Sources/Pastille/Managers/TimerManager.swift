@@ -54,7 +54,7 @@ final class TimerManager: ObservableObject {
     private var endWork: DispatchWorkItem?
 
     /// Un minuteur ou chronomètre en pause s'efface après ce délai ; il revient s'il repart.
-    private static let pausedLifetime: TimeInterval = 10
+    nonisolated private static let pausedLifetime: TimeInterval = 10
     private var timerPause: (value: ClockTimer, since: Date)?
     private var stopwatchPause: (value: ClockStopwatch, since: Date)?
 
@@ -85,15 +85,16 @@ final class TimerManager: ObservableObject {
 
     /// Renvoie nil pour une pause qui dure depuis plus de `pausedLifetime`.
     /// Une nouvelle pause (valeur différente) repart pour 10 secondes.
-    private static func hidingStalePause<T: Equatable>(
+    nonisolated static func hidingStalePause<T: Equatable>(
         _ value: T?, _ isPaused: KeyPath<T, Bool>, pause: inout (value: T, since: Date)?, now: Date
     ) -> T? {
         guard let value, value[keyPath: isPaused] else {
             pause = nil
             return value
         }
-        if pause?.value != value { pause = (value, now) }
-        return now.timeIntervalSince(pause!.since) < pausedLifetime ? value : nil
+        let since = pause?.value == value ? pause?.since ?? now : now
+        pause = (value, since)
+        return now.timeIntervalSince(since) < pausedLifetime ? value : nil
     }
 
     /// Fait disparaître le minuteur pile à la fin, sans attendre la prochaine relecture.

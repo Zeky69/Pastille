@@ -3,7 +3,9 @@
 #   ./build.sh           compile dans build/Pastille.app
 #   ./build.sh install   compile, installe dans /Applications et relance Pastille depuis là
 #   ./build.sh debug     compile en mode debug
-set -e
+# Les tests (Tests/PastilleTests) passent d'abord : s'ils échouent, rien n'est compilé ni installé.
+#   SKIP_TESTS=1 ./build.sh install   pour les sauter exceptionnellement
+set -e -o pipefail
 cd "$(dirname "$0")"
 INSTALL=0
 CONFIG=release
@@ -11,6 +13,13 @@ case "${1:-}" in
     install) INSTALL=1 ;;
     debug) CONFIG=debug ;;
 esac
+if [[ "${SKIP_TESTS:-0}" != 1 ]]; then
+    echo "🧪 Tests…"
+    if ! swift test --quiet 2>&1 | tail -n 25; then
+        echo "❌ Tests en échec : rien n'est installé."
+        exit 1
+    fi
+fi
 swift build -c $CONFIG
 APP=build/Pastille.app
 rm -rf $APP

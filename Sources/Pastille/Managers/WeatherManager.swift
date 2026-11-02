@@ -54,14 +54,15 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
     private func fetch() {
         guard let coordinate else { return }
         lastFetch = Date()
-        var components = URLComponents(string: "https://api.open-meteo.com/v1/forecast")!
+        guard var components = URLComponents(string: "https://api.open-meteo.com/v1/forecast") else { return }
         components.queryItems = [
             .init(name: "latitude", value: String(format: "%.2f", coordinate.latitude)),
             .init(name: "longitude", value: String(format: "%.2f", coordinate.longitude)),
             .init(name: "current", value: "temperature_2m,weather_code,is_day"),
             .init(name: "temperature_unit", value: UserDefaults.standard.string(forKey: Appearance.weatherUnitKey) ?? "celsius"),
         ]
-        URLSession.shared.dataTask(with: components.url!) { data, _, _ in
+        guard let url = components.url else { return }
+        URLSession.shared.dataTask(with: url) { data, _, _ in
             guard let data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let current = json["current"] as? [String: Any],

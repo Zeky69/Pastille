@@ -103,16 +103,23 @@ final class VerificationCodeManager: ObservableObject {
     }
 
     private func check() {
+        // Option coupée : on ne lit ni Messages ni Mail. Au retour, on repart du dernier message
+        // existant plutôt que de ressortir ceux arrivés entre-temps.
+        let codes = Appearance.bool(Appearance.codeActivityKey)
+        let readsMessages = codes && Appearance.bool(Appearance.codesMessagesKey)
+        let readsMail = codes && Appearance.bool(Appearance.codesMailKey)
+        if !readsMessages { lastRowID = nil }
         let path = database.path
         let since = lastRowID
         let mail = mail
         queue.async {
-            let result = Self.readMessages(path: path, after: since)
-            let mailCode = mail.check()
+            let result = readsMessages ? Self.readMessages(path: path, after: since) : nil
+            if !readsMail { mail.reset() }
+            let mailCode = readsMail ? mail.check() : nil
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     let manager = VerificationCodeManager.shared
-                    manager.apply(result)
+                    if let result, readsMessages, manager.lastRowID == since { manager.apply(result) }
                     if let mailCode, Appearance.bool(Appearance.codesMailKey) {
                         manager.show(VerificationCode(
                             code: mailCode.code, sender: mailCode.sender, received: mailCode.date,
@@ -133,17 +140,19 @@ final class VerificationCodeManager: ObservableObject {
             // Premier passage : on part du dernier message existant, sans ressortir les anciens codes.
             let isFirstRead = lastRowID == nil
             lastRowID = max(lastRowID ?? 0, maxRowID)
-            guard !isFirstRead else { return }
-            for message in messages.reversed() {
-                if Appearance.bool(Appearance.codesMessagesKey), let code = Self.extractCode(from: message.text) {
-                    show(VerificationCode(
-                        code: code, sender: message.sender, received: message.date,
-                        service: Self.serviceName(text: message.text, sender: message.sender)
-                    ))
-                    return
-                }
-            }
+            // Plusieurs codes arrivés d'un coup : le plus récent est le bon.
+            guard !isFirstRead, let message = Self.newestWithCode(messages.map { ($0.text, $0) }),
+                  let code = Self.extractCode(from: message.text) else { return }
+            show(VerificationCode(
+                code: code, sender: message.sender, received: message.date,
+                service: Self.serviceName(text: message.text, sender: message.sender)
+            ))
         }
+    }
+
+    /// Premier élément (le plus récent) dont le texte contient un code.
+    nonisolated static func newestWithCode<T>(_ items: [(text: String, value: T)]) -> T? {
+        items.first { extractCode(from: $0.text) != nil }?.value
     }
 
     private func show(_ code: VerificationCode) {
@@ -233,6 +242,9 @@ final class VerificationCodeManager: ObservableObject {
 
     /// Les messages récents gardent leur texte dans `attributedBody` (NSAttributedString archivé).
     nonisolated private static func decodeAttributedBody(_ data: Data) -> String? {
+        // Le texte d'un message vient de n'importe qui : on le lit d'abord directement dans les octets,
+        // sans recréer d'objets à partir de ces données.
+        if let text = typedStreamText(data) { return text }
         // Format « typedstream » d'avant NSKeyedArchiver : seul NSUnarchiver (obsolète mais toujours
         // présent) sait le lire. Appel dynamique pour éviter l'avertissement de dépréciation.
         let selector = NSSelectorFromString("unarchiveObjectWithData:")
@@ -241,18 +253,28 @@ final class VerificationCodeManager: ObservableObject {
            let string = (unarchiver.perform(selector, with: data)?.takeUnretainedValue() as? NSAttributedString)?.string {
             return string
         }
-        // Secours : le texte suit le marqueur « NSString », précédé de sa longueur.
+        return nil
+    }
+
+    /// Texte d'un NSAttributedString archivé en « typedstream » : il suit le marqueur « NSString »
+    /// (puis 5 octets), précédé de sa longueur (1 octet, ou 0x81 + 2 octets, ou 0x82 + 4 octets).
+    nonisolated static func typedStreamText(_ data: Data) -> String? {
         let bytes = [UInt8](data)
         guard let marker = data.range(of: Data("NSString".utf8)) else { return nil }
-        var i = marker.upperBound + 5
+        var i = marker.upperBound - data.startIndex + 5
         guard i < bytes.count else { return nil }
         var length = Int(bytes[i])
         i += 1
-        if length == 0x81, i + 1 < bytes.count {
+        if length == 0x81 {
+            guard i + 2 <= bytes.count else { return nil }
             length = Int(bytes[i]) | Int(bytes[i + 1]) << 8
             i += 2
+        } else if length == 0x82 {
+            guard i + 4 <= bytes.count else { return nil }
+            length = Int(bytes[i]) | Int(bytes[i + 1]) << 8 | Int(bytes[i + 2]) << 16 | Int(bytes[i + 3]) << 24
+            i += 4
         }
-        guard i + length <= bytes.count else { return nil }
+        guard length >= 0, i + length <= bytes.count else { return nil }
         return String(bytes: bytes[i..<i + length], encoding: .utf8)
     }
 

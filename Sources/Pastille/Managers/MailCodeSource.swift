@@ -31,6 +31,12 @@ final class MailCodeSource: @unchecked Sendable {
     /// Mails récents (10 min) : un mail arrivé sans corps téléchargé est réessayé.
     private static let window: TimeInterval = 600
 
+    /// Option coupée : au retour, on repartira du dernier mail existant.
+    func reset() {
+        startRowID = nil
+        handled.removeAll()
+    }
+
     func check() -> Found? {
         guard let root else { return nil }
         var db: OpaquePointer?
@@ -71,9 +77,10 @@ final class MailCodeSource: @unchecked Sendable {
         while sqlite3_step(statement) == SQLITE_ROW {
             let id = sqlite3_column_int64(statement, 0)
             guard !handled.contains(id) else { continue }
-            let subject = String(cString: sqlite3_column_text(statement, 1))
-            let summary = String(cString: sqlite3_column_text(statement, 2))
-            let sender = String(cString: sqlite3_column_text(statement, 3))
+            func text(_ column: Int32) -> String { sqlite3_column_text(statement, column).map { String(cString: $0) } ?? "" }
+            let subject = text(1)
+            let summary = text(2)
+            let sender = text(3)
             let date = Date(timeIntervalSince1970: Double(sqlite3_column_int64(statement, 4)))
 
             // L'objet suffit souvent (« Votre code : 123456 ») ; sinon on lit le corps du mail.

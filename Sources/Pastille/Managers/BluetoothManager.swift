@@ -185,7 +185,7 @@ final class BluetoothManager: ObservableObject {
     }
 
     /// « 80-c3-ba-66-f4-b6 » et « 80:C3:BA:66:F4:B6 » désignent le même appareil.
-    nonisolated private static func normalize(_ address: String) -> String {
+    nonisolated static func normalize(_ address: String) -> String {
         address.uppercased().replacingOccurrences(of: "-", with: ":")
     }
 
@@ -207,7 +207,7 @@ final class BluetoothManager: ObservableObject {
             .flatMap { $0.compactMap { device(name: $0.key, info: $0.value, fallback: fallback) } }
     }
 
-    nonisolated private static func device(name: String, info: [String: Any], fallback: [String: [String: Int]]) -> BluetoothDevice? {
+    nonisolated static func device(name: String, info: [String: Any], fallback: [String: [String: Int]]) -> BluetoothDevice? {
         let extra = (info["device_address"] as? String).flatMap { fallback[normalize($0)] } ?? [:]
         func level(_ key: String, _ fallbackKey: String) -> Int? {
             (info[key] as? String).flatMap { Int($0.filter(\.isNumber)) } ?? extra[fallbackKey]

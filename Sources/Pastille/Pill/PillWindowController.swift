@@ -98,7 +98,7 @@ final class PillWindowController {
         let app = AXUIElementCreateApplication(pid)
         var window: CFTypeRef?
         guard AXUIElementCopyAttributeValue(app, kAXFocusedWindowAttribute as CFString, &window) == .success,
-              let window else { return false }
+              let window, CFGetTypeID(window) == AXUIElementGetTypeID() else { return false }
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(window as! AXUIElement, "AXFullScreen" as CFString, &value) == .success else {
             return false
