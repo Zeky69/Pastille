@@ -264,7 +264,12 @@ final class PillViewModel: ObservableObject {
 
     /// Taille compacte, élargie quand une activité est en cours.
     var compactSize: CGSize {
-        CGSize(width: cutoutSize.width + 2 * sideWidth, height: cutoutSize.height)
+        CGSize(width: cutoutSize.width + 2 * sideWidth, height: cutoutSize.height + extraHeight)
+    }
+
+    /// Hauteur ajoutée sous l'encoche : le nouveau morceau y affiche son titre en entier.
+    var extraHeight: CGFloat {
+        liveActivity == .newTrack ? 38 : 0
     }
 
     /// Largeur ajoutée de chaque côté de la découpe (symétrique pour rester centré).
@@ -277,7 +282,7 @@ final class PillViewModel: ObservableObject {
         case .caffeine: 58
         case .charged: 60
         case .timerDone: 68
-        case .newTrack: 116
+        case .newTrack: newTrackSideWidth
         case .deviceConnected: 96
         // Largeur du code (chiffres à ~7,4 pt) + marge extérieure, 2 pt de débord côté encoche.
         case .code: CGFloat(VerificationCodeManager.shared.current?.code.count ?? 6) * 7.4 + 10
@@ -285,6 +290,19 @@ final class PillViewModel: ObservableObject {
         case .stopwatch: [48, 56, 68][TimerManager.shared.stopwatchDigits] + 12 - 2
         case .hud: 66
         }
+    }
+
+    /// Assez large pour le titre du nouveau morceau sous l'encoche (pochette + titre + spectre),
+    /// sans dépasser une largeur raisonnable : au-delà, le titre est coupé par « … ».
+    private var newTrackSideWidth: CGFloat {
+        guard case .newTrack(let track, _) = moment else { return 64 }
+        let font = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+        let titleWidth = max(
+            (track.title as NSString).size(withAttributes: [.font: font]).width,
+            (track.artist as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 10.5)]).width
+        )
+        let row = 30 + 9 + titleWidth + 9 + 18 + 2 * 14
+        return min(max((row - cutoutSize.width) / 2, 64), 190)
     }
 
     /// Juste la place du temps restant (« 4:59 », « 14:59 » ou « 1:00:00 ») et de sa marge extérieure ;

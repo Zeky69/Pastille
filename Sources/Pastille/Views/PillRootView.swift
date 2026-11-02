@@ -22,15 +22,16 @@ struct PillRootView: View {
     }
 
     private var topRadius: CGFloat { viewModel.isExpanded ? 19 : 6 }
-    private var bottomRadius: CGFloat { viewModel.isExpanded ? 24 : 14 }
+    private var bottomRadius: CGFloat { viewModel.isExpanded ? 24 : viewModel.extraHeight > 0 ? 20 : 14 }
 
     var body: some View {
         let size = viewModel.currentSize
         let shape = PillShape(topCornerRadius: topRadius, bottomCornerRadius: bottomRadius)
 
         ZStack(alignment: .top) {
-            PillBackground(shape: shape, glass: showsGlass)
-                .frame(width: size.width, height: size.height)
+            PillBackground(shape: shape, size: size, canvas: viewModel.expandedSize,
+                           usesGlass: material == Appearance.PillMaterial.glass.rawValue,
+                           revealed: viewModel.isExpanded)
                 .shadow(color: .black.opacity(viewModel.isExpanded ? (showsGlass ? 0.3 : 0.5) : 0),
                         radius: viewModel.isExpanded ? 14 : 0, y: 6)
 
@@ -65,7 +66,7 @@ struct PillRootView: View {
                     .transition(.pillContent)
             } else {
                 CompactPillView(viewModel: viewModel)
-                    .frame(width: viewModel.compactSize.width, height: viewModel.cutoutSize.height)
+                    .frame(width: viewModel.compactSize.width, height: viewModel.compactSize.height, alignment: .top)
                     .transition(.opacity.animation(.easeOut(duration: 0.12)))
             }
         }
@@ -77,25 +78,51 @@ struct PillRootView: View {
 /// transparence et que le texte blanc reste lisible sur n'importe quel fond.
 private struct PillBackground: View {
     let shape: PillShape
-    let glass: Bool
+    /// Taille animée de la pastille.
+    let size: CGSize
+    /// Taille ouverte : le verre est posé une fois à cette taille, puis découpé par la forme animée.
+    let canvas: CGSize
+    /// Réglage « Liquid Glass » choisi.
+    let usesGlass: Bool
+    /// Pastille ouverte : le verre se dévoile ; fermée, elle reste noire comme l'encoche.
+    let revealed: Bool
 
     var body: some View {
-        ZStack {
-            if glass {
-                glassLayer.transition(.opacity)
+        // Le verre ne s'anime pas lui-même (sa propre physique ne suivrait pas celle de la pastille) :
+        // il reste fixe, sous un voile noir qui s'efface, et c'est la découpe par la forme qui grandit,
+        // exactement comme pour le contenu.
+        ZStack(alignment: .top) {
+            if usesGlass {
+                glassLayer
+                // Voile sombre par-dessus le verre : quel que soit l'état que macOS lui donne (fenêtre
+                // inactive, page claire derrière), le résultat reste fumé.
+                Color.black.opacity(0.3)
             }
-            shape.fill(Color.black).opacity(glass ? 0 : 1)
+            Color.black
+                .opacity(usesGlass && revealed ? 0 : 1)
+                .animation(.easeInOut(duration: revealed ? 0.4 : 0.25), value: revealed)
         }
-        .animation(.easeInOut(duration: 0.35), value: glass)
+        .frame(width: max(canvas.width, size.width), height: max(canvas.height, size.height), alignment: .top)
+        .mask(alignment: .top) { shape.frame(width: size.width, height: size.height) }
+        .overlay(alignment: .top) {
+            // Liseré clair sur le bord, plus marqué en haut, comme le reflet du verre.
+            shape
+                .stroke(LinearGradient(colors: [.white.opacity(0.28), .white.opacity(0.06)], startPoint: .top, endPoint: .bottom),
+                        lineWidth: 1)
+                .frame(width: size.width, height: size.height)
+                .opacity(usesGlass && revealed ? 1 : 0)
+                .animation(.easeInOut(duration: 0.4), value: revealed)
+        }
+        .environment(\.colorScheme, .dark)
     }
 
     @ViewBuilder
     private var glassLayer: some View {
         if #available(macOS 26, *) {
-            Color.clear.glassEffect(.regular.tint(.black.opacity(0.62)), in: shape)
+            Color.clear.glassEffect(.regular.tint(.black.opacity(0.62)), in: Rectangle())
         } else {
-            shape.fill(.ultraThinMaterial)
-                .overlay(shape.fill(Color.black.opacity(0.55)))
+            Rectangle().fill(.ultraThinMaterial)
+                .overlay(Color.black.opacity(0.55))
         }
     }
 }

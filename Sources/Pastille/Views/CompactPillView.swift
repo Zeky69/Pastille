@@ -15,6 +15,10 @@ struct CompactPillView: View {
     /// Activité dessinée. Quand elle se termine, on garde son contenu le temps que les côtés
     /// se replient : il glisse alors sous l'encoche au lieu de s'effacer d'un coup.
     @State private var shown: LiveActivity = .none
+    /// Morceau annoncé sous l'encoche (gardé pendant le repli).
+    @State private var announcedTrack: Track?
+    @State private var announcedArtwork: NSImage?
+    @State private var announcedVisible = false
 
     private var h: CGFloat { viewModel.cutoutSize.height }
 
@@ -27,14 +31,30 @@ struct CompactPillView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            leading
-                .frame(width: viewModel.sideWidth, height: h)
-            Spacer(minLength: 0)
-            trailing
-                .frame(width: viewModel.sideWidth, height: h)
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                leading
+                    .frame(width: viewModel.sideWidth, height: h)
+                Spacer(minLength: 0)
+                trailing
+                    .frame(width: viewModel.sideWidth, height: h)
+            }
+            below
         }
+        .frame(maxHeight: .infinity, alignment: .top)
         .opacity(shown == .none ? 0 : 1)
+        .onChange(of: viewModel.moment) { _, moment in
+            if case .newTrack(let track, let artwork) = moment {
+                announcedTrack = track
+                announcedArtwork = artwork
+                withAnimation(.easeOut(duration: 0.25).delay(0.1)) { announcedVisible = true }
+            } else if announcedTrack != nil {
+                withAnimation(.easeOut(duration: 0.12)) { announcedVisible = false }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    if viewModel.liveActivity != .newTrack { announcedTrack = nil }
+                }
+            }
+        }
         .onChange(of: viewModel.liveActivity, initial: true) { _, activity in
             guard activity == .none else {
                 shown = activity
@@ -64,13 +84,7 @@ struct CompactPillView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 12)
         case .newTrack:
-            if case .newTrack(_, let artwork) = viewModel.moment {
-                ArtworkView(image: artwork, cornerRadius: 5)
-                    .frame(width: h - 10, height: h - 10)
-                    .modifier(PopIn())
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 10)
-            }
+            Color.clear
         case .charged:
             Image(systemName: "battery.100percent.bolt")
                 .font(.system(size: 15, weight: .semibold))
@@ -144,6 +158,37 @@ struct CompactPillView: View {
         }
     }
 
+    /// Sous l'encoche (pastille un peu plus haute) : titre et artiste du nouveau morceau, en entier.
+    /// Le morceau s'efface en fondu dès que la pastille commence à remonter (rapide, pour ne jamais
+    /// laisser une pastille étirée et vide, ni du texte qui dépasse).
+    @ViewBuilder
+    private var below: some View {
+        if let track = announcedTrack {
+            HStack(spacing: 9) {
+                // Pochette en direct : macOS l'envoie souvent juste après le titre.
+                ArtworkView(image: music.track == track ? (music.artwork ?? announcedArtwork) : announcedArtwork,
+                            cornerRadius: 6)
+                    .frame(width: 30, height: 30)
+                    .modifier(PopIn())
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(track.title)
+                        .font(.system(size: 12.5, weight: .semibold))
+                    Text(track.artist)
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+                .lineLimit(1)
+                .truncationMode(.tail)
+                AudioVisualizer(isPlaying: music.isPlaying, color: Appearance.AccentChoice.resolve(accentRaw, artwork: music.accentColor))
+                    .frame(width: 18, height: 12)
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 1)
+            .opacity(announcedVisible ? 1 : 0)
+        }
+    }
+
     @ViewBuilder
     private var trailing: some View {
         switch shown {
@@ -162,19 +207,7 @@ struct CompactPillView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.trailing, 12)
         case .newTrack:
-            if case .newTrack(let track, _) = viewModel.moment {
-                VStack(alignment: .trailing, spacing: 0) {
-                    Text(track.title)
-                        .font(.system(size: 11, weight: .semibold))
-                    Text(track.artist)
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(.white.opacity(0.6))
-                }
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.trailing, 10)
-            }
+            Color.clear
         case .charged:
             Text("Chargé")
                 .font(.system(size: 12, weight: .semibold))
