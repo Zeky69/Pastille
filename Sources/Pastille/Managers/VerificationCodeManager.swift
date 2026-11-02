@@ -18,6 +18,9 @@ final class VerificationCodeManager: ObservableObject {
 
     @Published private(set) var current: VerificationCode?
     @Published private(set) var copied = false
+    /// Le code s'affiche dans la pastille fermée seulement ses 5 premières secondes.
+    @Published private(set) var showsInClosedPill = false
+    private var closedPillWork: DispatchWorkItem?
     /// false tant que macOS refuse l'accès à la base de Messages.
     @Published private(set) var hasAccess = true
 
@@ -31,8 +34,10 @@ final class VerificationCodeManager: ObservableObject {
     private var expireWork: DispatchWorkItem?
     private let queue = DispatchQueue(label: "pastille.messages")
 
-    /// Un code reste affiché 3 minutes, ou 4 secondes après avoir été copié.
-    private static let lifetime: TimeInterval = 180
+    /// Un code reste 5 s dans la pastille fermée, et 10 s en tout dans la pastille ouverte
+    /// (en haut à gauche) ; 4 s après avoir été copié, il disparaît.
+    private static let lifetime: TimeInterval = 10
+    private static let closedPillDuration: TimeInterval = 5
 
     func start() {
         watch()
@@ -58,8 +63,10 @@ final class VerificationCodeManager: ObservableObject {
 
     func dismiss() {
         expireWork?.cancel()
+        closedPillWork?.cancel()
         current = nil
         copied = false
+        showsInClosedPill = false
     }
 
     // MARK: - Lecture
@@ -142,6 +149,11 @@ final class VerificationCodeManager: ObservableObject {
     private func show(_ code: VerificationCode) {
         current = code
         copied = false
+        showsInClosedPill = true
+        closedPillWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.showsInClosedPill = false }
+        closedPillWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.closedPillDuration, execute: work)
         schedule(expireIn: Self.lifetime)
     }
 

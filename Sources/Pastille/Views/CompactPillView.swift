@@ -21,7 +21,6 @@ struct CompactPillView: View {
     @State private var announcedVisible = false
     /// La pochette et le spectre glissent d'une place à l'autre (en haut ↔ sous l'encoche).
     @Namespace private var morph
-    @State private var warmUp = false
 
     private var h: CGFloat { viewModel.cutoutSize.height }
 
@@ -45,7 +44,6 @@ struct CompactPillView: View {
             below
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .overlay(alignment: .topTrailing) { musicVisualizer }
         .opacity(shown == .none ? 0 : 1)
         // `initial` : si la pastille fermée réapparaît pendant une annonce, elle en reprend le contenu.
         .onChange(of: viewModel.moment, initial: true) { _, moment in
@@ -167,26 +165,6 @@ struct CompactPillView: View {
     }
 
     /// Sous l'encoche (pastille un peu plus haute) : titre et artiste du nouveau morceau, en entier.
-    /// Spectre de la musique, posé en permanence dans le coin droit et montré en fondu : c'est une vue
-    /// macOS, et la retirer en pleine animation bloquait la toute première animation de la pastille.
-    private var musicVisualizer: some View {
-        let visible = shown == .music || shown == .newTrack
-        return AudioVisualizer(isPlaying: music.isPlaying, color: Appearance.AccentChoice.resolve(accentRaw, artwork: music.accentColor))
-            .frame(width: 18, height: 12)
-            .frame(width: viewModel.sideWidth, height: h)
-            .opacity(visible ? 1 : 0)
-            .animation(.easeInOut(duration: 0.2), value: visible)
-            .allowsHitTesting(false)
-            // La première animation SwiftUI lancée après l'arrivée de cette vue animée ne démarre pas
-            // (elle reste figée jusqu'à la suivante). On en lance une, invisible, juste après.
-            .background(Color.clear.opacity(warmUp ? 0.001 : 0))
-            .onAppear {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    withAnimation(.linear(duration: 0.05)) { warmUp.toggle() }
-                }
-            }
-    }
-
     /// Le morceau s'efface en fondu dès que la pastille commence à remonter (rapide, pour ne jamais
     /// laisser une pastille étirée et vide, ni du texte qui dépasse).
     @ViewBuilder
@@ -209,6 +187,9 @@ struct CompactPillView: View {
                 .truncationMode(.tail)
                 // Seul le texte apparaît et disparaît en fondu ; pochette et spectre se déplacent.
                 .opacity(announcedVisible ? 1 : 0)
+                AudioVisualizer(isPlaying: music.isPlaying, color: Appearance.AccentChoice.resolve(accentRaw, artwork: music.accentColor))
+                    .matchedGeometryEffect(id: "visualizer", in: morph)
+                    .frame(width: 18, height: 12)
             }
             .padding(.horizontal, 14)
             .frame(maxWidth: .infinity)
@@ -220,7 +201,10 @@ struct CompactPillView: View {
     private var trailing: some View {
         switch shown {
         case .music:
-            Color.clear
+            AudioVisualizer(isPlaying: music.isPlaying, color: Appearance.AccentChoice.resolve(accentRaw, artwork: music.accentColor))
+                .matchedGeometryEffect(id: "visualizer", in: morph)
+                .frame(width: 18, height: 12)
+                .modifier(FirstAnimationWarmUp())
         case .charging:
             BatteryIcon(level: battery.level, isCharging: true)
         case .unplugged:
@@ -297,6 +281,25 @@ struct CompactPillView: View {
         case .none:
             EmptyView()
         }
+    }
+}
+
+// MARK: - Amorce des animations
+
+/// Le spectre est une vue macOS animée en continu : la première animation SwiftUI lancée après son
+/// arrivée ne démarrait pas (la pastille restait figée jusqu'à la mise à jour suivante). On en lance
+/// une, invisible, juste après son apparition, pour que les vraies animations ne soient jamais les premières.
+private struct FirstAnimationWarmUp: ViewModifier {
+    @State private var tick = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(Color.clear.opacity(tick ? 0.001 : 0))
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    withAnimation(.linear(duration: 0.05)) { tick.toggle() }
+                }
+            }
     }
 }
 

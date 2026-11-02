@@ -201,8 +201,7 @@ final class PillViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        VerificationCodeManager.shared.$current
-            .map { $0?.code }
+        VerificationCodeManager.shared.$showsInClosedPill
             .removeDuplicates()
             .sink { [weak self] _ in
                 DispatchQueue.main.async { self?.refreshLiveActivity() }
@@ -424,11 +423,13 @@ final class PillViewModel: ObservableObject {
         var new: LiveActivity
         if HUDManager.shared.current != nil {
             new = .hud
-        } else if let moment {
-            // Les moments sont courts : ils passent même devant un code reçu (qui reste 3 min).
-            new = moment.activity
-        } else if Appearance.bool(Appearance.codeActivityKey), VerificationCodeManager.shared.current != nil {
+        } else if Appearance.bool(Appearance.codeActivityKey), VerificationCodeManager.shared.showsInClosedPill,
+                  VerificationCodeManager.shared.current != nil {
+            // Le code ne reste que 5 s dans la pastille fermée : il passe avant les autres moments,
+            // qui attendent leur tour dans la file.
             new = .code
+        } else if let moment {
+            new = moment.activity
         } else if Appearance.bool(Appearance.clockActivityKey), let clock = clockActivity {
             new = clock
         } else if Appearance.bool(Appearance.downloadActivityKey), DownloadManager.shared.state != .idle {
