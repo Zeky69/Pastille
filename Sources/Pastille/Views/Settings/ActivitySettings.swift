@@ -18,6 +18,7 @@ struct ActivitySettings: View {
     @AppStorage(Appearance.musicSourceBadgeKey) private var sourceBadge = true
     @AppStorage(Appearance.timerDoneKey) private var timerDone = true
     @AppStorage(Appearance.newTrackKey) private var newTrack = true
+    @AppStorage(Appearance.newTrackManualOnlyKey) private var newTrackManualOnly = false
     @AppStorage(Appearance.codesSenderKey) private var codesSender = true
 
     var body: some View {
@@ -41,6 +42,8 @@ struct ActivitySettings: View {
                 row("play.rectangle.fill", .red, "Son des autres apps", "YouTube dans le navigateur, vidéos, podcasts… (coupé : Musique, Spotify, Deezer… seulement).", $musicOtherApps)
                 row("app.badge.fill", .gray, "Icône de l'app sur la pochette", "Pour savoir d'où vient le son.", $sourceBadge)
                 row("music.note.list", .purple, "Nouveau morceau", "Pochette et titre 2 secondes dans la pastille fermée quand la chanson change.", $newTrack)
+                row("forward.fill", .purple, "Seulement quand je change de morceau", "Avec « Suivant », « Précédent », les AirPods… Pas quand la chanson suivante s'enchaîne toute seule.", $newTrackManualOnly)
+                    .disabled(!newTrack)
             } header: {
                 Text("Musique")
             }

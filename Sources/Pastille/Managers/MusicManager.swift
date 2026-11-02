@@ -337,8 +337,10 @@ final class MusicManager: ObservableObject {
         )
         if newTrack != track {
             let previous = track
+            // Où en était le morceau précédent (position pas encore remplacée par celle du nouveau) ?
+            let skipped = previous.map { Self.wasSkipped(duration: $0.duration, elapsed: elapsed()) } ?? false
             track = newTrack
-            if previous != nil, Date().timeIntervalSince(startedAt) > 3 { scheduleAnnouncement(of: newTrack) }
+            if previous != nil, Date().timeIntervalSince(startedAt) > 3 { scheduleAnnouncement(of: newTrack, skipped: skipped) }
         }
 
         rate = (info["rate"] as? NSNumber)?.doubleValue ?? 1
@@ -363,7 +365,7 @@ final class MusicManager: ObservableObject {
     private var announcementWork: DispatchWorkItem?
     private var lastAnnounced: Track?
 
-    private func scheduleAnnouncement(of newTrack: Track) {
+    private func scheduleAnnouncement(of newTrack: Track, skipped: Bool) {
         announcementWork?.cancel()
         let work = DispatchWorkItem {
             MainActor.assumeIsolated {
@@ -371,11 +373,20 @@ final class MusicManager: ObservableObject {
                 guard manager.track == newTrack, manager.isPlaying, manager.lastAnnounced != newTrack else { return }
                 manager.lastAnnounced = newTrack
                 if let skipped = manager.skippedFromPill, Date().timeIntervalSince(skipped) < 4 { return }
+                // Option « seulement quand je change de morceau » : la chanson qui s'enchaîne n'est pas annoncée.
+                if Appearance.bool(Appearance.newTrackManualOnlyKey), !skipped { return }
                 manager.trackChanged.send(newTrack)
             }
         }
         announcementWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    }
+
+    /// Le morceau a-t-il été coupé avant sa fin (« Suivant », « Précédent »…) plutôt que joué jusqu'au bout ?
+    /// 10 s de marge : fondu enchaîné de Musique et mises à jour de position un peu en retard.
+    /// Durée inconnue : on considère qu'il s'est enchaîné tout seul.
+    nonisolated static func wasSkipped(duration: Double, elapsed: Double) -> Bool {
+        duration > 0 && duration - elapsed > 10
     }
 
     private func setArtwork(_ image: NSImage?) {

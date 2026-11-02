@@ -24,6 +24,8 @@ enum Appearance {
     static let deviceConnectedKey = "activity.deviceConnected"
     static let timerDoneKey = "activity.timerDone"
     static let newTrackKey = "activity.newTrack"
+    /// Titre annoncé seulement quand on change soi-même de morceau (pas quand la chanson suivante s'enchaîne).
+    static let newTrackManualOnlyKey = "activity.newTrack.manualOnly"
     static let codesSenderKey = "codes.sender"
     static let powerKey = "activity.power"
     static let codesMessagesKey = "codes.messages"
@@ -54,6 +56,7 @@ enum Appearance {
             deviceConnectedKey: true,
             timerDoneKey: true,
             newTrackKey: true,
+            newTrackManualOnlyKey: false,
             codesSenderKey: true,
             powerKey: true,
             codesMessagesKey: true,
@@ -333,7 +336,7 @@ enum Appearance {
         let defaults = UserDefaults.standard
         for key in [clockActivityKey, downloadActivityKey, codeActivityKey, hudActivityKey, batteryAlertKey,
                     deviceConnectedKey, powerKey, codesMessagesKey, codesMailKey,
-                    timerDoneKey, newTrackKey, codesSenderKey,
+                    timerDoneKey, newTrackKey, newTrackManualOnlyKey, codesSenderKey,
                     musicPriorityKey, musicOtherAppsKey, musicSourceBadgeKey, weatherUnitKey, materialKey,
                     Settings.musicLiveActivityKey, Settings.showBatteryPercentKey] {
             defaults.removeObject(forKey: key)

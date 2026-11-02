@@ -175,3 +175,19 @@ import Testing
         #expect(cache["titre 9999|artiste"] == 9999)
     }
 }
+
+/// Changement de morceau demandé (« Suivant »…) ou chanson qui s'enchaîne toute seule.
+@Suite struct TrackSkipTests {
+    @Test(arguments: [
+        (200.0, 45.0, true),     // coupé en plein milieu
+        (200.0, 0.0, true),      // « Suivant » dès le début
+        (200.0, 189.0, true),
+        (200.0, 200.0, false),   // joué jusqu'au bout
+        (200.0, 195.0, false),   // fondu enchaîné
+        (200.0, 230.0, false),   // position en retard sur la fin
+        (0.0, 45.0, false),      // durée inconnue
+    ])
+    func detectsManualSkips(duration: Double, elapsed: Double, skipped: Bool) {
+        #expect(MusicManager.wasSkipped(duration: duration, elapsed: elapsed) == skipped)
+    }
+}
