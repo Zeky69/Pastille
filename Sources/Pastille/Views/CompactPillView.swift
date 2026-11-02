@@ -129,7 +129,7 @@ struct CompactPillView: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(downloads.state == .finished ? .green : .blue)
                 .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.pulse, isActive: downloads.state != .finished)
+                // Pas de pulsation : un téléchargement peut durer des heures, et l'effet coûtait ~18 % de CPU.
         case .code:
             Image(systemName: codes.copied ? "checkmark.circle.fill" : "key.fill")
                 .font(.system(size: 12, weight: .semibold))
@@ -246,9 +246,20 @@ struct CompactPillView: View {
                     .padding(.trailing, 12)
             }
         case .download:
-            DownloadRing(state: downloads.state)
-                .frame(width: 16, height: 16)
-                .help(downloads.state == .finished ? "Ouvrir le fichier (⌥ : le montrer dans le Finder)" : "")
+            if case .downloading(nil) = downloads.state, let measure = downloads.measure {
+                // Pas de pourcentage connu : le total déjà reçu, court (la vitesse, pastille ouverte).
+                Text(measure.total)
+                    .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.blue)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 12)
+            } else {
+                DownloadRing(state: downloads.state)
+                    .frame(width: 16, height: 16)
+                    .help(downloads.state == .finished ? "Ouvrir le fichier (⌥ : le montrer dans le Finder)" : "")
+            }
         case .code:
             if let code = codes.current {
                 Text(code.code)

@@ -17,6 +17,17 @@ final class DownloadManager: ObservableObject {
     @Published private(set) var state: State = .idle
     /// Fichier qui vient d'arriver, ouvert d'un clic sur la coche verte.
     private(set) var finishedFile: URL?
+    /// Sans pourcentage (l'app ne donne pas la taille finale, ex. IPTVnator) : vitesse et quantité
+    /// déjà reçue, mesurées sur les fichiers temporaires.
+    struct Measure: Equatable {
+        /// « 812 Mo », « 1,2 Go » : court, pour tenir sans être coupé.
+        var total: String
+        /// « 2,5 Mo/s », « 850 Ko/s ».
+        var speed: String?
+    }
+    @Published private(set) var measure: Measure?
+    private var sizeSamples: [(date: Date, bytes: Int64)] = []
+    private var detailUpdatedAt = Date.distantPast
 
     private let folder = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Downloads")
     private static let partialExtensions: Set<String> = ["crdownload", "download", "part", "partial"]
@@ -84,7 +95,60 @@ final class DownloadManager: ObservableObject {
         let fraction = known.isEmpty ? nil : known.map(\.fractionCompleted).reduce(0, +) / Double(known.count)
         let new = State.downloading(fraction.map { min(max($0, 0), 1) })
         if new != state { state = new }
+        if fraction == nil { measurePartialFiles() } else if measure != nil { measure = nil }
         startPolling()
+    }
+
+    /// Taille cumulée des fichiers temporaires, et vitesse sur les 3 dernières secondes.
+    /// Le texte n'est rafraîchi qu'une fois par seconde, pour rester lisible.
+    private func measurePartialFiles() {
+        let now = Date()
+        let bytes = partialBytes()
+        sizeSamples.append((now, bytes))
+        sizeSamples.removeAll { now.timeIntervalSince($0.date) > 3 }
+        guard bytes > 0, now.timeIntervalSince(detailUpdatedAt) >= 1 else { return }
+        detailUpdatedAt = now
+
+        var new = Measure(total: Self.short(Double(bytes)))
+        if let first = sizeSamples.first, now.timeIntervalSince(first.date) >= 1 {
+            let speed = Double(bytes - first.bytes) / now.timeIntervalSince(first.date)
+            if speed > 0 { new.speed = Self.short(speed) + "/s" }
+        }
+        if new != measure { measure = new }
+    }
+
+    /// Taille la plus courte possible : une décimale sous 10 (« 2,5 Mo », « 1,2 Go »), sinon un entier (« 812 Mo »).
+    private static func short(_ bytes: Double) -> String {
+        let units = ["o", "Ko", "Mo", "Go", "To"]
+        var value = bytes
+        var index = 0
+        while value >= 1000, index < units.count - 1 {
+            value /= 1000
+            index += 1
+        }
+        let number = value < 10 && index >= 2
+            ? String(format: "%.1f", value).replacingOccurrences(of: ".", with: ",")
+            : String(Int(value.rounded()))
+        return "\(number) \(units[index])"
+    }
+
+    private func partialBytes() -> Int64 {
+        let manager = FileManager.default
+        let names = (try? manager.contentsOfDirectory(atPath: folder.path)) ?? []
+        var total: Int64 = 0
+        for name in names where Self.partialExtensions.contains((name as NSString).pathExtension.lowercased()) {
+            let url = folder.appending(path: name)
+            var isDirectory: ObjCBool = false
+            guard manager.fileExists(atPath: url.path, isDirectory: &isDirectory) else { continue }
+            // Safari range ses téléchargements dans un paquet « .download » : on additionne son contenu.
+            let files = isDirectory.boolValue
+                ? ((try? manager.contentsOfDirectory(atPath: url.path)) ?? []).map { url.appending(path: $0) }
+                : [url]
+            for file in files {
+                total += (try? manager.attributesOfItem(atPath: file.path)[.size] as? Int64) ?? 0
+            }
+        }
+        return total
     }
 
     /// Pendant un téléchargement, la progression est relue deux fois par seconde.
@@ -103,6 +167,8 @@ final class DownloadManager: ObservableObject {
 
     /// Coche « terminé » pendant 4 s (le temps de cliquer dessus), puis plus rien.
     private func finish() {
+        measure = nil
+        sizeSamples.removeAll()
         finishedFile = newestDownload()
         state = .finished
         scheduleIdle(after: 4)

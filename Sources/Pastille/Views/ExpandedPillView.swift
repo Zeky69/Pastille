@@ -82,6 +82,8 @@ struct ExpandedPillView: View {
 
             HStack(spacing: compact ? 6 : 10) {
                 // Collés à l'encoche ; la batterie du Mac reste au bord droit.
+                DownloadSpeedView()
+                    .padding(.leading, 4)
                 if showBluetooth {
                     BluetoothDevicesView()
                         .padding(.leading, 4)
@@ -139,6 +141,7 @@ private struct CaffeineButton: View {
 /// Code de vérification reçu (cliquer pour le copier), sinon la météo.
 private struct CodeOrWeatherView: View {
     @ObservedObject private var codes = VerificationCodeManager.shared
+    @ObservedObject private var downloads = DownloadManager.shared
     @AppStorage(Appearance.showWeatherKey) private var showWeather = true
     @AppStorage(Appearance.codesSenderKey) private var showSender = true
 
@@ -167,6 +170,18 @@ private struct CodeOrWeatherView: View {
             }
             .buttonStyle(.plain)
             .help(code.sender.isEmpty ? "Copier le code" : "Code reçu de \(code.sender) — cliquer pour copier")
+            .transition(.blurReplace)
+        } else if case .downloading(nil) = downloads.state, let measure = downloads.measure {
+            // Téléchargement sans pourcentage : total déjà reçu et vitesse.
+            // Le total à gauche ; la vitesse est de l'autre côté de l'encoche (voir DownloadSpeedView).
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: 11))
+                Text(measure.total)
+                    .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
+            }
+            .foregroundStyle(.blue)
+            .lineLimit(1)
             .transition(.blurReplace)
         } else if showWeather {
             WeatherView()
@@ -203,5 +218,21 @@ extension View {
                     .onDisappear { PageSwipeBlockers.frames[id] = nil }
             }
         )
+    }
+}
+
+/// Vitesse d'un téléchargement sans pourcentage, collée à droite de l'encoche (le total est à gauche).
+private struct DownloadSpeedView: View {
+    @ObservedObject private var downloads = DownloadManager.shared
+
+    var body: some View {
+        if case .downloading(nil) = downloads.state, let speed = downloads.measure?.speed {
+            Text(speed)
+                .font(.system(size: 11.5, weight: .semibold).monospacedDigit())
+                .foregroundStyle(.blue)
+                .lineLimit(1)
+                .fixedSize()
+                .transition(.blurReplace)
+        }
     }
 }

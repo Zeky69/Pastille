@@ -187,6 +187,17 @@ final class PillViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Le total d'un téléchargement sans pourcentage arrive après coup : la pastille s'élargit un peu.
+        DownloadManager.shared.$measure
+            .map { $0 != nil }
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    withAnimation(PillAnimation.activity) { self?.objectWillChange.send() }
+                }
+            }
+            .store(in: &cancellables)
+
         DownloadManager.shared.$state
             .map { state -> Int in
                 switch state {
@@ -285,7 +296,8 @@ final class PillViewModel: ObservableObject {
         case .none: 0
         case .music, .charging, .unplugged: cutoutSize.height + 10
         case .lowBattery: 42
-        case .download: cutoutSize.height + 6
+        // Pastille fermée : flèche + total court (« 812 Mo ») quand l'app ne donne pas de pourcentage.
+        case .download: DownloadManager.shared.measure != nil ? 58 : cutoutSize.height + 6
         case .caffeine: 58
         case .charged: 60
         case .timerDone: 68
