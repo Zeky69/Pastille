@@ -291,13 +291,20 @@ final class PillViewModel: ObservableObject {
         case .charged: 60
         case .timerDone: 68
         case .newTrack: newTrackSideWidth
-        case .deviceConnected: 96
+        case .deviceConnected: deviceSideWidth
         // Largeur du code (chiffres à ~7,4 pt) + marge extérieure, 2 pt de débord côté encoche.
         case .code: CGFloat(VerificationCodeManager.shared.current?.code.count ?? 6) * 7.4 + 10
         case .timer: timerSideWidth
         case .stopwatch: [48, 56, 68][TimerManager.shared.stopwatchDigits] + 12 - 2
         case .hud: 66
         }
+    }
+
+    /// Icône + nom de l'appareil à gauche (« AirPods Pro » en entier), pourcentage et anneau à droite.
+    private var deviceSideWidth: CGFloat {
+        guard case .deviceConnected(let device) = moment else { return 96 }
+        let name = (device.name as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11, weight: .semibold)]).width
+        return min(max(12 + 22 + 6 + name + 10, 96), 170)
     }
 
     /// Assez large pour le titre du nouveau morceau sous l'encoche (pochette + titre + spectre),

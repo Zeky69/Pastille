@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// Place le panneau en haut de l'écran et gère l'ouverture / fermeture au survol.
@@ -10,6 +11,7 @@ final class PillWindowController {
     private let panel: PillPanel
     private var screen: NSScreen
     private var monitors: [Any] = []
+    private var activityWatch: AnyCancellable?
     private var expandWork: DispatchWorkItem?
     private var collapseWork: DispatchWorkItem?
     /// Un menu contextuel ouvert depuis la pastille ne doit pas la refermer.
@@ -48,6 +50,16 @@ final class PillWindowController {
         panel.orderFrontRegardless()
         installMonitors()
         watchFullscreen()
+        // Avec le spectre (vue macOS animée en continu) dans la pastille, la toute première animation
+        // de taille ne démarrait pas : elle restait figée jusqu'à la mise à jour suivante. On provoque
+        // donc nous-mêmes cette mise à jour, une image après chaque changement d'activité.
+        activityWatch = viewModel.$liveActivity
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.016) {
+                    self?.viewModel.objectWillChange.send()
+                }
+            }
     }
 
     // MARK: - Plein écran
