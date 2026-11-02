@@ -174,8 +174,11 @@ final class MusicManager: ObservableObject {
         send("toggle")
     }
 
-    func next() { send("next") }
-    func previous() { send("previous") }
+    func next() { skippedFromPill = Date(); send("next") }
+    func previous() { skippedFromPill = Date(); send("previous") }
+
+    /// Changement de morceau demandé depuis la pastille : on ne l'annonce pas (c'est l'utilisateur qui l'a choisi).
+    private var skippedFromPill: Date?
 
     func seek(to seconds: Double) {
         position = seconds
@@ -254,7 +257,9 @@ final class MusicManager: ObservableObject {
             if let base64 = info["artwork"] as? String, let bytes = Data(base64Encoded: base64) {
                 nowPlayingArtwork = NSImage(data: bytes)
             } else if info["artworkHash"] == nil {
-                nowPlayingArtwork = nil
+                // Pendant un changement de morceau, macOS envoie des mises à jour sans image entre deux
+                // avec image : on garde celle déjà reçue pour ce morceau (sinon la pochette clignote).
+                nowPlayingArtwork = artworkCache[Self.key(info)]
             }
             if let image = nowPlayingArtwork { artworkCache[Self.key(info)] = image }
             nowPlaying = info
@@ -281,7 +286,11 @@ final class MusicManager: ObservableObject {
         let nowPlaying = nowPlayingIsMusic || Appearance.bool(Appearance.musicOtherAppsKey) ? self.nowPlaying : [:]
 
         let usePlayers: Bool
-        if !Appearance.bool(Appearance.musicPriorityKey) {
+        if has(nowPlaying), let bundle = nowPlaying["bundle"] as? String, bundle == players["bundle"] as? String {
+            // Les deux sources parlent de la même app : « À l'écoute » est toujours la plus à jour
+            // (AppleScript a souvent un temps de retard pendant un changement de morceau).
+            usePlayers = false
+        } else if !Appearance.bool(Appearance.musicPriorityKey) {
             // Sans priorité : ce que macOS montre, sauf s'il est en pause alors que Musique/Spotify joue.
             usePlayers = !has(nowPlaying) || (!playing(nowPlaying) && playing(players))
         } else if has(nowPlaying), nowPlayingIsMusic, playing(nowPlaying) || !playing(players) {
@@ -324,7 +333,7 @@ final class MusicManager: ObservableObject {
         if newTrack != track {
             let previous = track
             track = newTrack
-            if previous != nil, Date().timeIntervalSince(startedAt) > 3 { pendingTrackAnnouncement = newTrack }
+            if previous != nil, Date().timeIntervalSince(startedAt) > 3 { scheduleAnnouncement(of: newTrack) }
         }
 
         rate = (info["rate"] as? NSNumber)?.doubleValue ?? 1
@@ -342,14 +351,27 @@ final class MusicManager: ObservableObject {
         let newSource = (info["app"] as? String).map { AudioSource(name: $0, bundleID: info["bundle"] as? String) }
         if newSource != source { source = newSource }
         setArtwork(image)
-        // Annoncé une fois la pochette à jour, et seulement si le morceau joue.
-        if let announced = pendingTrackAnnouncement, playing {
-            pendingTrackAnnouncement = nil
-            trackChanged.send(announced)
-        }
     }
 
-    private var pendingTrackAnnouncement: Track?
+    /// Annonce d'un nouveau morceau : seulement quand le titre est stable depuis 0,3 s (pendant un
+    /// changement, les sources font parfois des allers-retours), qu'il joue, et jamais deux fois de suite.
+    private var announcementWork: DispatchWorkItem?
+    private var lastAnnounced: Track?
+
+    private func scheduleAnnouncement(of newTrack: Track) {
+        announcementWork?.cancel()
+        let work = DispatchWorkItem {
+            MainActor.assumeIsolated {
+                let manager = MusicManager.shared
+                guard manager.track == newTrack, manager.isPlaying, manager.lastAnnounced != newTrack else { return }
+                manager.lastAnnounced = newTrack
+                if let skipped = manager.skippedFromPill, Date().timeIntervalSince(skipped) < 4 { return }
+                manager.trackChanged.send(newTrack)
+            }
+        }
+        announcementWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    }
 
     private func setArtwork(_ image: NSImage?) {
         guard image !== artwork else { return }

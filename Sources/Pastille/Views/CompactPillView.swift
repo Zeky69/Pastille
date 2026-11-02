@@ -19,6 +19,8 @@ struct CompactPillView: View {
     @State private var announcedTrack: Track?
     @State private var announcedArtwork: NSImage?
     @State private var announcedVisible = false
+    /// La pochette et le spectre glissent d'une place à l'autre (en haut ↔ sous l'encoche).
+    @Namespace private var morph
 
     private var h: CGFloat { viewModel.cutoutSize.height }
 
@@ -43,21 +45,24 @@ struct CompactPillView: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .opacity(shown == .none ? 0 : 1)
-        .onChange(of: viewModel.moment) { _, moment in
+        // `initial` : si la pastille fermée réapparaît pendant une annonce, elle en reprend le contenu.
+        .onChange(of: viewModel.moment, initial: true) { _, moment in
             if case .newTrack(let track, let artwork) = moment {
-                announcedTrack = track
-                announcedArtwork = artwork
-                withAnimation(.easeOut(duration: 0.25).delay(0.1)) { announcedVisible = true }
-            } else if announcedTrack != nil {
-                withAnimation(.easeOut(duration: 0.12)) { announcedVisible = false }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    if viewModel.liveActivity != .newTrack { announcedTrack = nil }
+                // Même ressort que la pastille : la pochette et le spectre descendent sous l'encoche.
+                withAnimation(PillAnimation.activity) {
+                    announcedTrack = track
+                    announcedArtwork = artwork
                 }
+                withAnimation(.easeOut(duration: 0.25).delay(0.15)) { announcedVisible = true }
+            } else if announcedTrack != nil {
+                // Et remontent à leur place pendant que la pastille se replie ; le texte s'efface.
+                withAnimation(.easeOut(duration: 0.12)) { announcedVisible = false }
+                withAnimation(PillAnimation.activity) { announcedTrack = nil }
             }
         }
         .onChange(of: viewModel.liveActivity, initial: true) { _, activity in
             guard activity == .none else {
-                shown = activity
+                withAnimation(PillAnimation.activity) { shown = activity }
                 return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
@@ -71,6 +76,7 @@ struct CompactPillView: View {
         switch shown {
         case .music:
             ArtworkView(image: music.artwork, cornerRadius: 5)
+                .matchedGeometryEffect(id: "artwork", in: morph)
                 .frame(width: h - 10, height: h - 10)
         case .charging:
             Image(systemName: "bolt.fill")
@@ -168,8 +174,8 @@ struct CompactPillView: View {
                 // Pochette en direct : macOS l'envoie souvent juste après le titre.
                 ArtworkView(image: music.track == track ? (music.artwork ?? announcedArtwork) : announcedArtwork,
                             cornerRadius: 6)
+                    .matchedGeometryEffect(id: "artwork", in: morph)
                     .frame(width: 30, height: 30)
-                    .modifier(PopIn())
                 VStack(alignment: .leading, spacing: 1) {
                     Text(track.title)
                         .font(.system(size: 12.5, weight: .semibold))
@@ -179,13 +185,15 @@ struct CompactPillView: View {
                 }
                 .lineLimit(1)
                 .truncationMode(.tail)
+                // Seul le texte apparaît et disparaît en fondu ; pochette et spectre se déplacent.
+                .opacity(announcedVisible ? 1 : 0)
                 AudioVisualizer(isPlaying: music.isPlaying, color: Appearance.AccentChoice.resolve(accentRaw, artwork: music.accentColor))
+                    .matchedGeometryEffect(id: "visualizer", in: morph)
                     .frame(width: 18, height: 12)
             }
             .padding(.horizontal, 14)
             .frame(maxWidth: .infinity)
             .padding(.top, 1)
-            .opacity(announcedVisible ? 1 : 0)
         }
     }
 
@@ -194,6 +202,7 @@ struct CompactPillView: View {
         switch shown {
         case .music:
             AudioVisualizer(isPlaying: music.isPlaying, color: Appearance.AccentChoice.resolve(accentRaw, artwork: music.accentColor))
+                .matchedGeometryEffect(id: "visualizer", in: morph)
                 .frame(width: 18, height: 12)
         case .charging:
             BatteryIcon(level: battery.level, isCharging: true)

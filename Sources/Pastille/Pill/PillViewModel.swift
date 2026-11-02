@@ -69,7 +69,14 @@ enum LiveActivity: Equatable { case none, music, charging, unplugged, charged, d
 
 @MainActor
 final class PillViewModel: ObservableObject {
-    @Published var state: PillState = .compact
+    @Published var state: PillState = .compact {
+        // Pastille refermée : une annonce de morceau lancée pendant qu'elle était ouverte n'a plus lieu d'être.
+        didSet {
+            if state == .compact, oldValue == .expanded {
+                dropMoments { if case .newTrack = $0 { true } else { false } }
+            }
+        }
+    }
     @Published var tab: PillTab = .home {
         didSet { if tab != oldValue { refreshExpandedSize() } }
     }
@@ -239,7 +246,8 @@ final class PillViewModel: ObservableObject {
         MusicManager.shared.trackChanged
             .receive(on: DispatchQueue.main)
             .sink { [weak self] track in
-                guard Appearance.bool(Appearance.newTrackKey) else { return }
+                // Pastille ouverte : le morceau est déjà sous les yeux dans le lecteur.
+                guard Appearance.bool(Appearance.newTrackKey), self?.isExpanded == false else { return }
                 self?.enqueue(.newTrack(track, MusicManager.shared.artwork))
             }
             .store(in: &cancellables)
