@@ -19,6 +19,7 @@ struct CompactPillView: View {
     @State private var announcedTrack: Track?
     @State private var announcedArtwork: NSImage?
     @State private var announcedVisible = false
+    @ObservedObject private var recorder = ScreenRecordingManager.shared
     /// La pochette et le spectre glissent d'une place à l'autre (en haut ↔ sous l'encoche).
     @Namespace private var morph
 
@@ -89,8 +90,21 @@ struct CompactPillView: View {
                 .frame(width: 15, height: 15)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 12)
-        case .newTrack:
+        case .newTrack, .screenshot:
             Color.clear
+        case .recording:
+            RecordingDot()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 13)
+        case .focus:
+            if case .focus(let mode, let isOn) = viewModel.moment {
+                Image(systemName: mode.symbol)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(isOn ? mode.color : Color.white.opacity(0.5))
+                    .modifier(PopIn())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 12)
+            }
         case .charged:
             Image(systemName: "battery.100percent.bolt")
                 .font(.system(size: 15, weight: .semibold))
@@ -201,6 +215,29 @@ struct CompactPillView: View {
             .frame(maxWidth: .infinity)
             .padding(.top, 1)
         }
+        // La pastille s'est élargie puis descend : la capture sort de l'encoche en grandissant,
+        // et y remonte en rapetissant avant que la pastille se resserre.
+        if viewModel.screenshotDropped, case .screenshot(let shot, _) = viewModel.moment {
+            ScreenshotPreview(shot: shot, size: viewModel.screenshotPreviewSize, copied: Settings.screenshotAutoCopy)
+                .id(shot.url)
+                .padding(.top, 5)
+                .frame(maxWidth: .infinity)
+                // La forme de la pastille la découvre au fur et à mesure qu'elle descend ; elle-même ne fait
+                // que se déplier un peu, sans apparaître d'un coup.
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.88, anchor: .top)
+                        .combined(with: .opacity.animation(.easeOut(duration: 0.6))),
+                    removal: .scale(scale: 0.88, anchor: .top)
+                        .combined(with: .opacity.animation(.easeIn(duration: 0.45)))
+                ))
+        }
+    }
+
+    /// « 0:07 », « 12:34 », « 1:02:03 ».
+    static func elapsed(since start: Date, at now: Date) -> String {
+        let total = max(Int(now.timeIntervalSince(start)), 0)
+        let (h, m, sec) = (total / 3600, total / 60 % 60, total % 60)
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
     }
 
     @ViewBuilder
@@ -222,8 +259,28 @@ struct CompactPillView: View {
                 .fixedSize()
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.trailing, 12)
-        case .newTrack:
+        case .newTrack, .screenshot:
             Color.clear
+        case .recording:
+            if let start = recorder.startedAt {
+                TimelineView(.periodic(from: start, by: 1)) { context in
+                    Text(Self.elapsed(since: start, at: context.date))
+                        .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(.red)
+                        .fixedSize()
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.trailing, 12)
+            }
+        case .focus:
+            if case .focus(let mode, let isOn) = viewModel.moment {
+                Text(isOn ? mode.name : "Désactivé")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(isOn ? mode.color : Color.white.opacity(0.5))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 12)
+            }
         case .charged:
             Text("Chargé")
                 .font(.system(size: 12, weight: .semibold))
@@ -307,6 +364,120 @@ struct CompactPillView: View {
         case .none:
             EmptyView()
         }
+    }
+}
+
+/// Capture qui vient d'être prise : elle sort de l'encoche avec un flash blanc, comme un déclencheur,
+/// puis « Copiée » apparaît dans le coin quand elle est déjà dans le presse-papiers.
+/// Un clic ouvre l'outil Annoter d'Apple ; au survol, des boutons Partager, Finder et Corbeille.
+/// On peut aussi la glisser directement dans une autre app.
+private struct ScreenshotPreview: View {
+    let shot: Screenshot
+    let size: CGSize
+    let copied: Bool
+    @ObservedObject private var manager = ScreenshotManager.shared
+    @State private var flash = 0.6
+    @State private var badge = false
+    @State private var hovering = false
+
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 12, style: .continuous) }
+
+    var body: some View {
+        let thumbnail = manager.thumbnails[shot.url]
+        ZStack {
+            shape.fill(.white.opacity(0.08))
+            if let thumbnail {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .transition(.opacity)
+            }
+            Color.white.opacity(flash)
+        }
+        .frame(width: size.width, height: size.height)
+        .clipShape(shape)
+        .overlay(shape.stroke(.white.opacity(hovering ? 0.35 : 0.16), lineWidth: 1))
+        .scaleEffect(hovering ? 1.02 : 1)
+        .contentShape(shape)
+        .onTapGesture { manager.markup(shot) }
+        .onDrag { NSItemProvider(contentsOf: shot.url) ?? NSItemProvider() }
+        .overlay(alignment: .topTrailing) {
+            HStack(spacing: 4) {
+                PreviewButton(symbol: "pencil.tip.crop.circle", help: "Annoter") { manager.markup(shot) }
+                ShareLink(item: shot.url) {
+                    PreviewButtonLabel(symbol: "square.and.arrow.up")
+                }
+                .buttonStyle(.plain)
+                .help("Partager")
+                PreviewButton(symbol: "folder", help: "Afficher dans le Finder") { manager.reveal(shot) }
+                PreviewButton(symbol: "trash", help: "Mettre à la corbeille") { manager.delete(shot) }
+            }
+            .padding(7)
+            .opacity(hovering ? 1 : 0)
+            .scaleEffect(hovering ? 1 : 0.85, anchor: .topTrailing)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if copied {
+                HStack(spacing: 3) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 6.5, weight: .heavy))
+                    Text("Copiée")
+                        .font(.system(size: 8, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(.black.opacity(0.55)))
+                .background(Capsule().fill(.ultraThinMaterial))
+                .padding(5)
+                .scaleEffect(badge ? 1 : 0.6, anchor: .bottomTrailing)
+                .opacity(badge && !hovering ? 1 : 0)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: thumbnail != nil)
+        .onHover { inside in
+            withAnimation(.spring(duration: 0.25, bounce: 0.3)) { hovering = inside }
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.8).delay(0.3)) { flash = 0 }
+            withAnimation(.spring(duration: 0.5, bounce: 0.4).delay(1.0)) { badge = true }
+        }
+    }
+}
+
+private struct PreviewButtonLabel: View {
+    let symbol: String
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(width: 24, height: 24)
+            .background(Circle().fill(.black.opacity(0.6)))
+            .background(Circle().fill(.ultraThinMaterial))
+            .contentShape(Circle())
+    }
+}
+
+private struct PreviewButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) { PreviewButtonLabel(symbol: symbol) }
+            .buttonStyle(.plain)
+            .help(help)
+    }
+}
+
+/// Point rouge qui respire pendant un enregistrement d'écran. Effet de symbole (animé par le système) :
+/// une animation SwiftUI en boucle coûterait du processeur pendant tout l'enregistrement.
+struct RecordingDot: View {
+    var body: some View {
+        Image(systemName: "circle.fill")
+            .font(.system(size: 9))
+            .foregroundStyle(.red)
+            .symbolEffect(.pulse, options: .repeating)
     }
 }
 

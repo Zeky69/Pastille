@@ -191,3 +191,26 @@ import Testing
         #expect(MusicManager.wasSkipped(duration: duration, elapsed: elapsed) == skipped)
     }
 }
+
+/// Fenêtre qui recouvre l'écran de l'encoche (plein écran maison des lecteurs et des jeux).
+@Suite struct FullscreenCoverTests {
+    private let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+
+    @Test func windowOverTheWholeScreenCovers() {
+        // VLC en plein écran : fenêtre de la taille exacte de l'écran.
+        #expect(PillWindowController.covers(CGRect(x: 0, y: 0, width: 1512, height: 982), screen: screen, primaryHeight: 982))
+        // Un demi-point de débordement ne change rien.
+        #expect(PillWindowController.covers(CGRect(x: -0.5, y: 0, width: 1513, height: 982), screen: screen, primaryHeight: 982))
+    }
+
+    @Test func ordinaryWindowsDoNotCover() {
+        // Fenêtre agrandie : elle s'arrête sous la barre des menus.
+        #expect(!PillWindowController.covers(CGRect(x: 0, y: 32, width: 1512, height: 950), screen: screen, primaryHeight: 982))
+        #expect(!PillWindowController.covers(CGRect(x: 100, y: 100, width: 800, height: 600), screen: screen, primaryHeight: 982))
+    }
+
+    @Test func windowOnAnotherScreenDoesNotCover() {
+        // Écran externe au-dessus de l'écran principal : la fenêtre plein écran est là-haut.
+        #expect(!PillWindowController.covers(CGRect(x: 0, y: -1080, width: 1920, height: 1080), screen: screen, primaryHeight: 982))
+    }
+}

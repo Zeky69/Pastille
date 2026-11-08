@@ -5,12 +5,13 @@ import SwiftUI
 enum PillState { case compact, expanded }
 
 enum PillTab: String, CaseIterable, Identifiable {
-    case home, screenshots
+    case home, screenshots, shelf
     var id: String { rawValue }
     var icon: String {
         switch self {
         case .home: "house.fill"
         case .screenshots: "camera.viewfinder"
+        case .shelf: "tray.full.fill"
         }
     }
 }
@@ -26,6 +27,10 @@ enum Moment: Equatable {
     case newTrack(Track, NSImage?)
     /// Nouvelle version de Pastille disponible.
     case update(String)
+    /// Capture d'écran qui vient d'être prise, avec son rapport hauteur / largeur.
+    case screenshot(Screenshot, CGFloat)
+    /// Mode Concentration qui s'active (true) ou se termine (false).
+    case focus(FocusMode, Bool)
 
     var activity: LiveActivity {
         switch self {
@@ -38,6 +43,8 @@ enum Moment: Equatable {
         case .timerDone: .timerDone
         case .newTrack: .newTrack
         case .update: .update
+        case .screenshot: .screenshot
+        case .focus: .focus
         }
     }
 
@@ -50,6 +57,8 @@ enum Moment: Equatable {
         case .timerDone: 5
         case .newTrack: 2.5
         case .update: 5
+        case .screenshot: 5
+        case .focus: 2.5
         }
     }
 
@@ -58,7 +67,8 @@ enum Moment: Equatable {
         switch (self, other) {
         case (.charging, .charging), (.charging, .unplugged), (.unplugged, .unplugged), (.unplugged, .charging),
              (.charged, .charged), (.lowBattery, .lowBattery), (.caffeine, .caffeine),
-             (.timerDone, .timerDone), (.newTrack, .newTrack), (.update, .update):
+             (.timerDone, .timerDone), (.newTrack, .newTrack), (.update, .update),
+             (.screenshot, .screenshot), (.focus, .focus):
             true
         case let (.deviceConnected(a), .deviceConnected(b)):
             a.id == b.id
@@ -69,4 +79,4 @@ enum Moment: Equatable {
 }
 
 /// Activité affichée de part et d'autre de la pastille compacte (façon « Live Activity »).
-enum LiveActivity: Equatable { case none, music, charging, unplugged, charged, deviceConnected, lowBattery, timer, timerDone, stopwatch, newTrack, download, caffeine, code, hud, update }
+enum LiveActivity: Equatable { case none, music, charging, unplugged, charged, deviceConnected, lowBattery, timer, timerDone, stopwatch, newTrack, download, caffeine, code, hud, update, screenshot, recording, focus }

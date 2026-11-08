@@ -68,7 +68,10 @@ Connexion d'un appareil Bluetooth avec son niveau de batterie, branchement du ch
 | Batterie | Pourcentage, alertes à 20, 10 et 5 %, notification de charge |
 | Volume et luminosité | Remplace l'indicateur de macOS, avec l'icône de la sortie audio utilisée |
 | Téléchargements | Progression, vitesse, puis ouverture du fichier d'un clic |
-| Captures d'écran | Onglet dédié : copier, glisser-déposer, mettre à la corbeille |
+| Captures d'écran | Aperçu animé dans l'encoche à chaque capture, copie automatique, annotation d'un clic, onglet dédié |
+| Étagère | Glisser des fichiers sur l'encoche pour les garder sous la main, puis les glisser ailleurs ou les envoyer par AirDrop |
+| Enregistrement d'écran | Point rouge et durée pendant l'enregistrement, arrêt depuis la pastille |
+| Mode Concentration | Annonce de Ne pas déranger, Sommeil, Travail… à l'activation et à la fin |
 | Veille | Maintient le Mac éveillé à la demande |
 | Météo | Température et conditions à la position actuelle |
 | Plein écran | La pastille se retire pendant les vidéos, jeux et présentations |

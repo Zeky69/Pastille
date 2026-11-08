@@ -14,8 +14,13 @@ final class PillWindowController {
     private var activityWatch: AnyCancellable?
     private var expandWork: DispatchWorkItem?
     private var collapseWork: DispatchWorkItem?
+    private var frontWindows: FrontWindowWatcher?
+    private var fullscreenWork: DispatchWorkItem?
     /// Un menu contextuel ouvert depuis la pastille ne doit pas la refermer.
     private var isMenuOpen = false
+    /// Compteur du presse-papiers de glisser-déposer au dernier clic : s'il a bougé depuis,
+    /// un nouveau glisser a commencé (ses données ne datent pas d'un glisser précédent).
+    private var dragBaseline = NSPasteboard(name: .drag).changeCount
     /// Glissement horizontal à deux doigts en cours : distance cumulée, et page déjà changée ou non.
     private var swipeDistance: CGFloat = 0
     private var swipeHandled = false
@@ -58,6 +63,8 @@ final class PillWindowController {
             .sink { [weak self] _ in
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.016) {
                     self?.viewModel.objectWillChange.send()
+                    // L'aperçu d'une capture a besoin d'une fenêtre plus haute (et la rend ensuite).
+                    self?.resizePanelIfNeeded()
                 }
             }
     }
@@ -71,6 +78,7 @@ final class PillWindowController {
         for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.didActivateApplicationNotification] {
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
+                    self?.followFrontApp()
                     // Après le glissement de macOS vers l'espace plein écran, pour que le repli se voie.
                     for delay in [0.6, 1.2, 2.0] {
                         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { self?.checkFullscreen() }
@@ -78,7 +86,24 @@ final class PillWindowController {
                 }
             }
         }
+        // Plein écran sans changement d'espace (VLC…) : la fenêtre change de taille, on revérifie
+        // une fois les mouvements terminés.
+        frontWindows = FrontWindowWatcher { [weak self] in
+            guard let self else { return }
+            checkFullscreen()
+            fullscreenWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.checkFullscreen() }
+            fullscreenWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+        }
+        followFrontApp()
         checkFullscreen()
+    }
+
+    private func followFrontApp() {
+        if let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier {
+            frontWindows?.watch(pid: pid)
+        }
     }
 
     /// Plein écran : on demande à l'app au premier plan (via l'Accessibilité) si sa fenêtre active est
@@ -115,22 +140,34 @@ final class PillWindowController {
                   (info[kCGWindowLayer as String] as? Int ?? -1) >= 0,
                   let dict = info[kCGWindowBounds as String] as? NSDictionary,
                   let bounds = CGRect(dictionaryRepresentation: dict) else { return false }
-            // Coordonnées CG : origine en haut à gauche de l'écran principal.
-            let frame = CGRect(x: bounds.minX, y: primaryHeight - bounds.maxY, width: bounds.width, height: bounds.height)
-            return frame.insetBy(dx: -1, dy: -1).contains(screen)
+            return covers(bounds, screen: screen, primaryHeight: primaryHeight)
         }
+    }
+
+    /// `bounds` en coordonnées CG (origine en haut à gauche de l'écran principal), `screen` en
+    /// coordonnées AppKit. Vrai si la fenêtre recouvre tout l'écran, bande de l'encoche comprise.
+    nonisolated static func covers(_ bounds: CGRect, screen: CGRect, primaryHeight: CGFloat) -> Bool {
+        let frame = CGRect(x: bounds.minX, y: primaryHeight - bounds.maxY, width: bounds.width, height: bounds.height)
+        return frame.insetBy(dx: -1, dy: -1).contains(screen)
     }
 
     static func preferredScreen() -> NSScreen {
         NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main ?? NSScreen.screens[0]
     }
 
+    private func resizePanelIfNeeded() {
+        let canvas = viewModel.canvasSize
+        let expected = CGSize(width: canvas.width + shadowPadding * 2, height: canvas.height + shadowPadding)
+        if panel.frame.size != expected { reposition() }
+    }
+
     func reposition() {
         screen = Self.preferredScreen()
         viewModel.update(for: screen)
+        let canvas = viewModel.canvasSize
         let size = CGSize(
-            width: viewModel.expandedSize.width + shadowPadding * 2,
-            height: viewModel.expandedSize.height + shadowPadding
+            width: canvas.width + shadowPadding * 2,
+            height: canvas.height + shadowPadding
         )
         let frame = NSRect(
             x: screen.frame.midX - size.width / 2,
@@ -192,12 +229,18 @@ final class PillWindowController {
 
         let center = NotificationCenter.default
         center.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.isMenuOpen = true }
+            MainActor.assumeIsolated {
+                self?.isMenuOpen = true
+                if self?.viewModel.liveActivity == .screenshot { self?.viewModel.momentHeld = true }
+            }
         }
         center.addObserver(forName: NSMenu.didEndTrackingNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.isMenuOpen = false
+                if self.viewModel.liveActivity == .screenshot {
+                    self.viewModel.momentHeld = self.hotRect().contains(NSEvent.mouseLocation)
+                }
                 if self.viewModel.isExpanded, !self.hotRect().contains(NSEvent.mouseLocation) { self.collapse() }
             }
         }
@@ -268,20 +311,57 @@ final class PillWindowController {
         return (true, true)
     }
 
+    /// Un glisser de fichiers est en cours (depuis le Finder, le Bureau, une autre app…).
+    private func isDraggingFiles() -> Bool {
+        guard Appearance.bool(Appearance.showShelfTabKey) else { return false }
+        let pasteboard = NSPasteboard(name: .drag)
+        return pasteboard.changeCount != dragBaseline && Self.carriesFiles(pasteboard.types ?? [])
+    }
+
+    nonisolated static func carriesFiles(_ types: [NSPasteboard.PasteboardType]) -> Bool {
+        types.contains(.fileURL) || types.contains(NSPasteboard.PasteboardType("NSFilenamesPboardType"))
+    }
+
     private func handle(_ event: NSEvent) {
         let location = NSEvent.mouseLocation
         let inside = hotRect().contains(location)
         // Coche verte d'un téléchargement terminé : elle se clique au lieu d'ouvrir la pastille.
         let downloadClickable = !viewModel.isExpanded && viewModel.liveActivity == .download
             && DownloadManager.shared.state == .finished
+        // Aperçu d'une capture : survolé, il reste affiché et ses boutons se cliquent (pas d'ouverture).
+        let previewActive = !viewModel.isExpanded && viewModel.liveActivity == .screenshot
+        if !previewActive, viewModel.momentHeld { viewModel.momentHeld = false }
+
+        if event.type == .leftMouseDown {
+            dragBaseline = NSPasteboard(name: .drag).changeCount
+        }
+
+        // Des fichiers glissés sur l'encoche fermée : elle s'ouvre sur l'étagère pour les accueillir.
+        if event.type == .leftMouseDragged, inside, !viewModel.isExpanded, isDraggingFiles() {
+            expandWork?.cancel()
+            expandWork = nil
+            viewModel.showShelf()
+            expand()
+            return
+        }
 
         if event.type == .leftMouseDown {
             if downloadClickable, inside {
                 DownloadManager.shared.openFinished(reveal: event.modifierFlags.contains(.option))
                 panel.ignoresMouseEvents = true
+            } else if previewActive {
+                // Le clic va à l'aperçu lui-même.
             } else if !viewModel.isExpanded, inside {
                 expand()
             }
+            return
+        }
+
+        if previewActive {
+            panel.ignoresMouseEvents = !inside
+            viewModel.momentHeld = inside || isMenuOpen
+            expandWork?.cancel()
+            expandWork = nil
             return
         }
 

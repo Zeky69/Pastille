@@ -11,6 +11,8 @@ struct GeneralSettings: View {
     @AppStorage(Settings.showMenuBarIconKey) private var showMenuBarIcon = true
     @AppStorage(Settings.tidyDesktopScreenshotsKey) private var tidyDesktop = true
     @AppStorage(Settings.checkForUpdatesKey) private var checkForUpdates = true
+    @AppStorage(Settings.screenshotPreviewKey) private var screenshotPreview = true
+    @AppStorage(Settings.screenshotAutoCopyKey) private var screenshotAutoCopy = true
     @State private var confirmReset = false
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var launchNeedsApproval = LaunchAtLogin.needsApproval
@@ -66,6 +68,20 @@ struct GeneralSettings: View {
                 LabeledContent("Dossier") {
                     Button(ScreenshotManager.shared.folderName) { ScreenshotManager.shared.revealFolder() }
                         .buttonStyle(.link)
+                }
+                Toggle(isOn: $screenshotPreview) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Aperçu dans l'encoche")
+                        Text("La capture descend de l'encoche quelques secondes, à la place de la vignette d'Apple en bas à droite. Survole-la pour l'ouvrir dans l'onglet Captures.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Toggle(isOn: $screenshotAutoCopy) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Copier automatiquement chaque capture")
+                        Text("Elle est aussitôt dans le presse-papiers, prête à coller avec ⌘V.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Toggle("Ranger dans ce dossier les captures tombées sur le Bureau", isOn: $tidyDesktop)
             }

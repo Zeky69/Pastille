@@ -12,6 +12,8 @@ enum Settings {
     static let swipePagesKey = "swipePages"
     static let tidyDesktopScreenshotsKey = "tidyDesktopScreenshots"
     static let checkForUpdatesKey = "checkForUpdates"
+    static let screenshotPreviewKey = "screenshots.notchPreview"
+    static let screenshotAutoCopyKey = "screenshots.autoCopy"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -25,6 +27,8 @@ enum Settings {
             swipePagesKey: true,
             tidyDesktopScreenshotsKey: true,
             checkForUpdatesKey: true,
+            screenshotPreviewKey: true,
+            screenshotAutoCopyKey: true,
         ])
     }
 
@@ -37,4 +41,8 @@ enum Settings {
     static var hideInFullscreen: Bool { UserDefaults.standard.bool(forKey: hideInFullscreenKey) }
     static var showMenuBarIcon: Bool { UserDefaults.standard.bool(forKey: showMenuBarIconKey) }
     static var checkForUpdates: Bool { UserDefaults.standard.bool(forKey: checkForUpdatesKey) }
+    /// Nouvelle capture : aperçu qui descend de l'encoche, à la place de la vignette d'Apple.
+    static var screenshotPreview: Bool { UserDefaults.standard.bool(forKey: screenshotPreviewKey) }
+    /// Nouvelle capture : copiée d'office, prête à coller avec ⌘V.
+    static var screenshotAutoCopy: Bool { UserDefaults.standard.bool(forKey: screenshotAutoCopyKey) }
 }

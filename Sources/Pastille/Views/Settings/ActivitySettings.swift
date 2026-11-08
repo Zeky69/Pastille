@@ -20,6 +20,8 @@ struct ActivitySettings: View {
     @AppStorage(Appearance.newTrackKey) private var newTrack = true
     @AppStorage(Appearance.newTrackManualOnlyKey) private var newTrackManualOnly = false
     @AppStorage(Appearance.codesSenderKey) private var codesSender = true
+    @AppStorage(Appearance.recordingKey) private var recording = true
+    @AppStorage(Appearance.focusKey) private var focus = true
 
     var body: some View {
         Form {
@@ -33,6 +35,8 @@ struct ActivitySettings: View {
                 row("battery.25", .red, "Batterie faible", "Alerte à 20 %, 10 % et 5 %.", $battery)
                 row("bolt.fill", .green, "Branchement et charge complète", "Éclair au branchement et au débranchement, « Chargé » à 100 %.", $power)
                 row("headphones", .indigo, "Appareil connecté", "Casque, AirPods ou clavier qui se connecte, avec sa batterie.", $deviceConnected)
+                row("record.circle", .red, "Enregistrement d'écran", "Point rouge et durée pendant un enregistrement ⌘⇧5. Stop dans la pastille ouverte.", $recording)
+                row("moon.fill", .indigo, "Mode Concentration", "Annonce Ne pas déranger, Sommeil, Travail… quand il s'active ou se termine (accès complet au disque).", $focus)
             } header: {
                 Text("Ce qui peut s'afficher dans la pastille fermée")
             }

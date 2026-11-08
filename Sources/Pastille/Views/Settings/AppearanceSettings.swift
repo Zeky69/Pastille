@@ -14,6 +14,7 @@ struct AppearanceSettings: View {
     @AppStorage(Appearance.showBluetoothKey) private var showBluetooth = true
     @AppStorage(Appearance.showCaffeineKey) private var showCaffeine = true
     @AppStorage(Appearance.showScreenshotsTabKey) private var showScreenshotsTab = true
+    @AppStorage(Appearance.showShelfTabKey) private var showShelfTab = true
     @AppStorage(Settings.showBatteryPercentKey) private var showBatteryPercent = true
     @AppStorage(Appearance.weatherUnitKey) private var weatherUnit = "celsius"
 
@@ -98,6 +99,7 @@ struct AppearanceSettings: View {
                 Toggle("Tasse de café", isOn: custom($showCaffeine))
                 Toggle("Pourcentage de batterie", isOn: custom($showBatteryPercent))
                 Toggle("Onglet Captures d'écran", isOn: custom($showScreenshotsTab))
+                Toggle("Onglet Étagère (glisser des fichiers sur l'encoche)", isOn: custom($showShelfTab))
             }
         }
         .formStyle(.grouped)

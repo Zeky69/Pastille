@@ -10,6 +10,11 @@ final class PillViewModel: ObservableObject {
             if state == .compact, oldValue == .expanded {
                 dropMoments { if case .newTrack = $0 { true } else { false } }
             }
+            // Ouverte pendant l'aperçu d'une capture : on arrive sur l'onglet Captures, où elle est en tête.
+            if state == .expanded, oldValue == .compact, case .screenshot = moment {
+                dropMoments { if case .screenshot = $0 { true } else { false } }
+                if availableTabs.contains(.screenshots) { tab = .screenshots }
+            }
         }
     }
     @Published var tab: PillTab = .home {
@@ -34,7 +39,26 @@ final class PillViewModel: ObservableObject {
     @Published private(set) var tabMovesForward = true
 
     var availableTabs: [PillTab] {
-        Appearance.bool(Appearance.showScreenshotsTabKey) ? PillTab.allCases : [.home]
+        Self.tabs(screenshots: Appearance.bool(Appearance.showScreenshotsTabKey),
+                  shelf: Appearance.bool(Appearance.showShelfTabKey))
+    }
+
+    /// Onglets affichés, dans l'ordre : Accueil, puis Captures et Étagère s'ils sont activés.
+    nonisolated static func tabs(screenshots: Bool, shelf: Bool) -> [PillTab] {
+        PillTab.allCases.filter { tab in
+            switch tab {
+            case .home: true
+            case .screenshots: screenshots
+            case .shelf: shelf
+            }
+        }
+    }
+
+    /// Fichier glissé sur l'encoche : la pastille s'ouvre directement sur l'étagère.
+    func showShelf() {
+        guard availableTabs.contains(.shelf), tab != .shelf else { return }
+        tabMovesForward = true
+        tab = .shelf
     }
 
     func select(_ newTab: PillTab) {
@@ -59,10 +83,15 @@ final class PillViewModel: ObservableObject {
         didSet { if fullscreenAppActive != oldValue { refreshLiveActivity() } }
     }
 
-    /// En plein écran, la pastille fermée se replie dans l'encoche puis s'efface ; le volume et la
-    /// luminosité restent visibles, et elle réapparaît dès qu'on l'ouvre en approchant la souris.
+    /// En plein écran, la pastille fermée se replie dans l'encoche puis s'efface ; le volume, la
+    /// luminosité et l'aperçu d'une capture restent visibles (on vient de les déclencher soi-même),
+    /// et elle réapparaît dès qu'on l'ouvre en approchant la souris.
     var isConcealed: Bool {
-        fullscreenAppActive && Settings.hideInFullscreen && !isExpanded && liveActivity != .hud
+        fullscreenAppActive && Settings.hideInFullscreen && !isExpanded && !Self.showsInFullscreen(liveActivity)
+    }
+
+    private static func showsInFullscreen(_ activity: LiveActivity) -> Bool {
+        activity == .hud || activity == .screenshot
     }
 
     /// Taille ouverte, selon les réglages « Taille » et « Lecteur » (normale : 640 × 190).
@@ -72,6 +101,18 @@ final class PillViewModel: ObservableObject {
 
     /// Moment à l'écran (ou en tête de file s'il est momentanément caché par le volume).
     @Published private(set) var moment: Moment?
+    /// Aperçu de capture : la pastille s'élargit d'abord, puis descend (true) ; elle remonte avant de se resserrer.
+    @Published private(set) var screenshotDropped = false
+    private var screenshotRetract: DispatchWorkItem?
+    /// Souris sur l'aperçu d'une capture (ou menu Partager ouvert) : le moment reste affiché.
+    @Published var momentHeld = false {
+        didSet {
+            guard momentHeld != oldValue else { return }
+            // En partant, on laisse encore un peu de temps avant qu'il remonte.
+            if !momentHeld { momentRemaining = max(momentRemaining, 1.5) }
+            syncMomentTimer()
+        }
+    }
     private var pendingMoments: [Moment] = []
     /// Moments en attente, dans l'ordre (lecture seule, pour les tests).
     var queuedMoments: [Moment] { pendingMoments }
@@ -88,7 +129,7 @@ final class PillViewModel: ObservableObject {
             .sink { [weak self] _ in
                 guard let self else { return }
                 self.refreshExpandedSize()
-                if !Appearance.bool(Appearance.showScreenshotsTabKey), self.tab == .screenshots { self.tab = .home }
+                if !self.availableTabs.contains(self.tab) { self.tab = .home }
                 self.refreshLiveActivity()
             }
             .store(in: &cancellables)
@@ -199,6 +240,30 @@ final class PillViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        ScreenRecordingManager.shared.$startedAt
+            .map { $0 != nil }
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.refreshLiveActivity() }
+            }
+            .store(in: &cancellables)
+
+        FocusManager.shared.changed
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] mode, isOn in
+                if Appearance.bool(Appearance.focusKey) { self?.enqueue(.focus(mode, isOn)) }
+            }
+            .store(in: &cancellables)
+
+        ScreenshotManager.shared.captured
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] shot, aspect in
+                // Pastille ouverte : la capture apparaît déjà dans l'onglet Captures.
+                guard Settings.screenshotPreview, self?.isExpanded == false else { return }
+                self?.enqueue(.screenshot(shot, aspect))
+            }
+            .store(in: &cancellables)
+
         UpdateManager.shared.announced
             .receive(on: DispatchQueue.main)
             .sink { [weak self] version in self?.enqueue(.update(version)) }
@@ -229,7 +294,40 @@ final class PillViewModel: ObservableObject {
 
     /// Hauteur ajoutée sous l'encoche : le nouveau morceau y affiche son titre en entier.
     var extraHeight: CGFloat {
-        liveActivity == .newTrack ? 38 : 0
+        switch liveActivity {
+        case .newTrack: 38
+        case .screenshot: screenshotDropped ? screenshotPreviewSize.height + 16 : 0
+        default: 0
+        }
+    }
+
+    /// Hauteur maximale de l'aperçu d'une capture.
+    static let screenshotMaxHeight: CGFloat = 100
+
+    /// Taille de la fenêtre utile : la pastille ouverte, ou plus haut pendant l'aperçu d'une capture.
+    var canvasSize: CGSize {
+        var size = expandedSize
+        if liveActivity == .screenshot {
+            size.width = max(size.width, compactSize.width)
+            size.height = max(size.height, cutoutSize.height + Self.screenshotMaxHeight + 16)
+        }
+        return size
+    }
+
+    /// Aperçu d'une capture sous l'encoche : la pastille s'élargit nettement au-delà de l'encoche,
+    /// et l'image y tient à ses proportions, sans descendre trop bas (100 pt de haut, 250 pt de large au plus).
+    var screenshotPreviewSize: CGSize {
+        let aspect: CGFloat = if case .screenshot(_, let ratio) = moment { min(max(ratio, 0.2), 3) } else { 10.0 / 16 }
+        let height = min(Self.screenshotMaxWidth * aspect, Self.screenshotMaxHeight)
+        return CGSize(width: min(Self.screenshotMaxWidth, height / aspect), height: height)
+    }
+
+    /// Largeur maximale de l'aperçu (une capture très large, peu haute).
+    static let screenshotMaxWidth: CGFloat = 250
+
+    /// La pastille épouse la capture (12 pt de marge de chaque côté), toujours un peu plus large que l'encoche.
+    private var screenshotSideWidth: CGFloat {
+        max((screenshotPreviewSize.width + 24 - cutoutSize.width) / 2, 24)
     }
 
     /// Largeur ajoutée de chaque côté de la découpe (symétrique pour rester centré).
@@ -246,6 +344,9 @@ final class PillViewModel: ObservableObject {
         case .charged: 60
         case .timerDone: 68
         case .newTrack: newTrackSideWidth
+        case .screenshot: screenshotSideWidth
+        case .recording: 62
+        case .focus: focusSideWidth
         case .deviceConnected: deviceSideWidth
         // Largeur du code (chiffres à ~7,4 pt) + marge extérieure, 2 pt de débord côté encoche.
         case .code: CGFloat(VerificationCodeManager.shared.current?.code.count ?? 6) * 7.4 + 10
@@ -273,6 +374,14 @@ final class PillViewModel: ObservableObject {
         )
         let row = 30 + 9 + titleWidth + 9 + 18 + 2 * 14
         return min(max((row - cutoutSize.width) / 2, 64), 190)
+    }
+
+    /// Icône à gauche ; nom du mode (ou « Désactivé ») à droite.
+    private var focusSideWidth: CGFloat {
+        guard case .focus(let mode, let isOn) = moment else { return 58 }
+        let text = (isOn ? mode.name : "Désactivé") as NSString
+        let width = text.size(withAttributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold)]).width
+        return min(max(width + 24, 58), 160)
     }
 
     /// Juste la place du temps restant (« 4:59 », « 14:59 » ou « 1:00:00 ») et de sa marge extérieure ;
@@ -311,9 +420,34 @@ final class PillViewModel: ObservableObject {
 
     // MARK: - File d'attente des moments
 
+    /// Aperçu de capture en trois temps, assez lents pour qu'on les suive : la pastille s'élargit,
+    /// puis descend peu à peu en dévoilant la capture ; au départ, elle remonte puis se resserre.
+    static let screenshotWiden = Animation.spring(duration: 0.65, bounce: 0.18)
+    static let screenshotDrop = Animation.spring(duration: 0.95, bounce: 0.16)
+    static let screenshotRise = Animation.spring(duration: 0.65, bounce: 0.05)
+
+    /// La pastille vient de s'élargir : une fois l'élargissement bien visible, elle descend.
+    private func scheduleScreenshotDrop() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self, self.liveActivity == .screenshot, self.screenshotRetract == nil else { return }
+            self.dropScreenshot()
+        }
+    }
+
+    func dropScreenshot() {
+        guard !screenshotDropped else { return }
+        withAnimation(Self.screenshotDrop) { screenshotDropped = true }
+    }
+
     func enqueue(_ new: Moment) {
         if let current = moment, new.replaces(current) {
             // Même genre déjà à l'écran : on met à jour et on relance son compte à rebours.
+            if screenshotRetract != nil {
+                // Une nouvelle capture pendant que la précédente remontait : elle redescend.
+                screenshotRetract?.cancel()
+                screenshotRetract = nil
+                momentShownAt = nil
+            }
             moment = new
             restartMomentTimer()
         } else {
@@ -326,10 +460,22 @@ final class PillViewModel: ObservableObject {
 
     private func dropMoments(where match: (Moment) -> Bool) {
         pendingMoments.removeAll(where: match)
-        if let moment, match(moment) { advanceMoment() }
+        if let moment, match(moment) { advanceMoment(immediately: true) }
     }
 
-    private func advanceMoment() {
+    private func advanceMoment(immediately: Bool = false) {
+        // La capture remonte d'abord dans la pastille, qui se resserre ensuite (moment suivant).
+        if !immediately, screenshotDropped, case .screenshot = moment {
+            momentWork?.cancel()
+            momentWork = nil
+            withAnimation(Self.screenshotRise) { screenshotDropped = false }
+            let work = DispatchWorkItem { [weak self] in self?.advanceMoment(immediately: true) }
+            screenshotRetract = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55, execute: work)
+            return
+        }
+        screenshotRetract?.cancel()
+        screenshotRetract = nil
         momentWork?.cancel()
         momentWork = nil
         momentShownAt = nil
@@ -349,7 +495,8 @@ final class PillViewModel: ObservableObject {
 
     /// Démarre ou met en pause le compte à rebours selon que le moment est visible ou caché.
     private func syncMomentTimer() {
-        let visible = moment.map { liveActivity == $0.activity } ?? false
+        guard screenshotRetract == nil else { return }
+        let visible = (moment.map { liveActivity == $0.activity } ?? false) && !momentHeld
         if visible, momentShownAt == nil {
             momentShownAt = Date()
             let work = DispatchWorkItem { [weak self] in self?.advanceMoment() }
@@ -386,6 +533,8 @@ final class PillViewModel: ObservableObject {
             new = .code
         } else if let moment {
             new = moment.activity
+        } else if Appearance.bool(Appearance.recordingKey), ScreenRecordingManager.shared.isRecording {
+            new = .recording
         } else if Appearance.bool(Appearance.clockActivityKey), let clock = clockActivity {
             new = clock
         } else if Appearance.bool(Appearance.downloadActivityKey), DownloadManager.shared.state != .idle {
@@ -396,12 +545,18 @@ final class PillViewModel: ObservableObject {
             new = .none
         }
         // Plein écran : l'activité se replie dans l'encoche (même ressort qu'une fin d'activité).
-        if fullscreenAppActive, Settings.hideInFullscreen, new != .hud {
+        if fullscreenAppActive, Settings.hideInFullscreen, !Self.showsInFullscreen(new) {
             new = .none
         }
         if new != liveActivity {
-            withAnimation(PillAnimation.activity) { liveActivity = new }
+            // La pastille s'élargit pour une capture (et se resserre ensuite) plus posément que d'habitude.
+            let widening = new == .screenshot || liveActivity == .screenshot
+            withAnimation(widening ? Self.screenshotWiden : PillAnimation.activity) {
+                liveActivity = new
+                if new != .screenshot { screenshotDropped = false }
+            }
         }
+        if new == .screenshot, !screenshotDropped, screenshotRetract == nil { scheduleScreenshotDrop() }
         syncMomentTimer()
     }
 }

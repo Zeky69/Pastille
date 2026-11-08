@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         BatteryManager.shared.start()
         CalendarManager.shared.start()
         ScreenshotManager.shared.start()
+        ScreenRecordingManager.shared.start()
+        FocusManager.shared.start()
         HUDManager.shared.start()
         TimerManager.shared.start()
         BluetoothManager.shared.start()

@@ -5,11 +5,12 @@ struct ExpandedPillView: View {
     var onOpenSettings: () -> Void
     @AppStorage(Appearance.homeLayoutKey) private var layoutRaw = Appearance.HomeLayout.musicAndCalendar.rawValue
     @AppStorage(Appearance.showScreenshotsTabKey) private var showScreenshotsTab = true
+    @AppStorage(Appearance.showShelfTabKey) private var showShelfTab = true
     @AppStorage(Appearance.musicStyleKey) private var musicStyleRaw = Appearance.MusicStyle.artwork.rawValue
     @AppStorage(Appearance.showBluetoothKey) private var showBluetooth = true
     @AppStorage(Appearance.showCaffeineKey) private var showCaffeine = true
 
-    private var tabs: [PillTab] { showScreenshotsTab ? PillTab.allCases : [.home] }
+    private var tabs: [PillTab] { PillViewModel.tabs(screenshots: showScreenshotsTab, shelf: showShelfTab) }
 
     /// Lecteur compact seul : la pastille est plus étroite, l'en-tête se resserre.
     private var compact: Bool {
@@ -36,6 +37,10 @@ struct ExpandedPillView: View {
                 case .screenshots:
                     ScreenshotsView()
                         .measuredHeight(for: .screenshots, in: viewModel)
+                        .transition(pageTransition)
+                case .shelf:
+                    ShelfView()
+                        .measuredHeight(for: .shelf, in: viewModel)
                         .transition(pageTransition)
                 }
             }
@@ -82,6 +87,7 @@ struct ExpandedPillView: View {
 
             HStack(spacing: compact ? 6 : 10) {
                 // Collés à l'encoche ; la batterie du Mac reste au bord droit.
+                RecordingStopButton()
                 DownloadSpeedView()
                     .padding(.leading, 4)
                 if showBluetooth {
@@ -119,6 +125,39 @@ private struct TabButton: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// Enregistrement d'écran en cours : point rouge et durée ; un clic l'arrête (comme ⌘⌃Échap).
+private struct RecordingStopButton: View {
+    @ObservedObject private var recorder = ScreenRecordingManager.shared
+    @State private var hovering = false
+
+    var body: some View {
+        if let start = recorder.startedAt {
+            Button { recorder.stop() } label: {
+                HStack(spacing: 5) {
+                    if hovering {
+                        Image(systemName: "stop.fill").font(.system(size: 8, weight: .bold))
+                    } else {
+                        RecordingDot()
+                    }
+                    TimelineView(.periodic(from: start, by: 1)) { context in
+                        Text(CompactPillView.elapsed(since: start, at: context.date))
+                            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                    }
+                }
+                .foregroundStyle(.red)
+                .padding(.horizontal, 8)
+                .frame(height: 20)
+                .background(Capsule().fill(.red.opacity(hovering ? 0.28 : 0.16)))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .help("Arrêter l'enregistrement")
+            .padding(.leading, 4)
+        }
     }
 }
 

@@ -22,21 +22,25 @@ struct PillRootView: View {
     }
 
     private var topRadius: CGFloat { viewModel.isExpanded ? 19 : 6 }
-    private var bottomRadius: CGFloat { viewModel.isExpanded ? 24 : viewModel.extraHeight > 0 ? 20 : 14 }
+    private var bottomRadius: CGFloat {
+        if viewModel.isExpanded { return 24 }
+        if viewModel.liveActivity == .screenshot, viewModel.screenshotDropped { return 22 }
+        return viewModel.extraHeight > 0 ? 20 : 14
+    }
 
     var body: some View {
         let size = viewModel.currentSize
         let shape = PillShape(topCornerRadius: topRadius, bottomCornerRadius: bottomRadius)
 
         ZStack(alignment: .top) {
-            PillBackground(shape: shape, size: size, canvas: viewModel.expandedSize,
+            PillBackground(shape: shape, size: size, canvas: viewModel.canvasSize,
                            usesGlass: material == Appearance.PillMaterial.glass.rawValue,
                            revealed: viewModel.isExpanded)
                 .shadow(color: .black.opacity(viewModel.isExpanded ? (showsGlass ? 0.3 : 0.5) : 0),
                         radius: viewModel.isExpanded ? 14 : 0, y: 6)
 
             content
-                .frame(width: viewModel.expandedSize.width, height: viewModel.expandedSize.height, alignment: .top)
+                .frame(width: viewModel.canvasSize.width, height: viewModel.canvasSize.height, alignment: .top)
                 .mask(alignment: .top) {
                     shape.frame(width: size.width, height: size.height)
                 }

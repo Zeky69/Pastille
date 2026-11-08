@@ -15,6 +15,7 @@ enum Appearance {
     static let showBluetoothKey = "appearance.showBluetooth"
     static let showCaffeineKey = "appearance.showCaffeine"
     static let showScreenshotsTabKey = "appearance.showScreenshotsTab"
+    static let showShelfTabKey = "appearance.showShelfTab"
 
     static let clockActivityKey = "activity.clock"
     static let downloadActivityKey = "activity.download"
@@ -28,6 +29,8 @@ enum Appearance {
     static let newTrackManualOnlyKey = "activity.newTrack.manualOnly"
     static let codesSenderKey = "codes.sender"
     static let powerKey = "activity.power"
+    static let recordingKey = "activity.recording"
+    static let focusKey = "activity.focus"
     static let codesMessagesKey = "codes.messages"
     static let codesMailKey = "codes.mail"
     static let musicPriorityKey = "music.priority"
@@ -48,6 +51,7 @@ enum Appearance {
             showBluetoothKey: true,
             showCaffeineKey: true,
             showScreenshotsTabKey: true,
+            showShelfTabKey: true,
             clockActivityKey: true,
             downloadActivityKey: true,
             codeActivityKey: true,
@@ -59,6 +63,8 @@ enum Appearance {
             newTrackManualOnlyKey: false,
             codesSenderKey: true,
             powerKey: true,
+            recordingKey: true,
+            focusKey: true,
             codesMessagesKey: true,
             codesMailKey: true,
             musicPriorityKey: true,
@@ -292,6 +298,7 @@ enum Appearance {
                     accentKey: AccentChoice.artwork.rawValue,
                     sizeKey: PillSize.standard.rawValue,
                     showWeatherKey: true, showBluetoothKey: true, showCaffeineKey: true, showScreenshotsTabKey: true,
+                    showShelfTabKey: true,
                 ]
             case .minimal:
                 return [
@@ -301,6 +308,7 @@ enum Appearance {
                     accentKey: AccentChoice.white.rawValue,
                     sizeKey: PillSize.compact.rawValue,
                     showWeatherKey: true, showBluetoothKey: false, showCaffeineKey: false, showScreenshotsTabKey: true,
+                    showShelfTabKey: true,
                 ]
             case .music:
                 return [
@@ -310,6 +318,7 @@ enum Appearance {
                     accentKey: AccentChoice.artwork.rawValue,
                     sizeKey: PillSize.large.rawValue,
                     showWeatherKey: false, showBluetoothKey: true, showCaffeineKey: false, showScreenshotsTabKey: true,
+                    showShelfTabKey: true,
                 ]
             case .agenda:
                 return [
@@ -319,6 +328,7 @@ enum Appearance {
                     accentKey: AccentChoice.blue.rawValue,
                     sizeKey: PillSize.standard.rawValue,
                     showWeatherKey: true, showBluetoothKey: true, showCaffeineKey: true, showScreenshotsTabKey: true,
+                    showShelfTabKey: true,
                 ]
             }
         }
