@@ -21,6 +21,8 @@ final class PillWindowController {
     /// Compteur du presse-papiers de glisser-déposer au dernier clic : s'il a bougé depuis,
     /// un nouveau glisser a commencé (ses données ne datent pas d'un glisser précédent).
     private var dragBaseline = NSPasteboard(name: .drag).changeCount
+    /// Surveillance du glisser, seulement tant que le bouton de la souris est enfoncé.
+    private var dragWatch: Timer?
     /// Glissement horizontal à deux doigts en cours : distance cumulée, et page déjà changée ou non.
     private var swipeDistance: CGFloat = 0
     private var swipeHandled = false
@@ -311,6 +313,60 @@ final class PillWindowController {
         return (true, true)
     }
 
+    // MARK: - Fichiers glissés vers l'encoche
+
+    /// À chaque clic, on note l'état du glisser-déposer puis on regarde, tant que le bouton reste
+    /// enfoncé, si des fichiers sont glissés vers l'encoche. Pendant un glisser, macOS n'envoie pas
+    /// toujours les mouvements de souris aux autres apps : on ne dépend donc pas d'eux.
+    private func startDragWatch() {
+        dragBaseline = NSPasteboard(name: .drag).changeCount
+        dragWatch?.invalidate()
+        dragWatch = nil
+        // Un glisser qui part de la pastille (une capture, un fichier de l'étagère qu'on sort)
+        // ne doit pas la faire changer de page en plein geste.
+        guard !hotRect().contains(NSEvent.mouseLocation) else { return }
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkFileDrag() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        dragWatch = timer
+    }
+
+    private func checkFileDrag() {
+        guard NSEvent.pressedMouseButtons & 1 != 0 else {
+            dragWatch?.invalidate()
+            dragWatch = nil
+            return
+        }
+        guard isDraggingFiles(),
+              Self.shelfDropZone(screen: screen.frame, cutout: viewModel.cutoutSize,
+                                 open: viewModel.isExpanded ? viewModel.expandedSize : nil)
+                .contains(NSEvent.mouseLocation) else { return }
+        openShelfForDrop()
+    }
+
+    /// La pastille s'ouvre (ou change de page) sur l'étagère, prête à recevoir les fichiers.
+    private func openShelfForDrop() {
+        expandWork?.cancel()
+        expandWork = nil
+        collapseWork?.cancel()
+        collapseWork = nil
+        if viewModel.isExpanded {
+            if viewModel.tab != .shelf { viewModel.select(.shelf) }
+        } else {
+            viewModel.showShelf()
+            expand()
+        }
+    }
+
+    /// Zone où un fichier glissé ouvre l'étagère (coordonnées écran) : une large bande en haut,
+    /// autour de l'encoche, pour ne pas devoir viser la découpe ; la pastille entière une fois ouverte.
+    nonisolated static func shelfDropZone(screen: CGRect, cutout: CGSize, open: CGSize?) -> CGRect {
+        let size = open.map { CGSize(width: $0.width + 16, height: $0.height + 8) }
+            ?? CGSize(width: cutout.width + 240, height: cutout.height + 50)
+        return CGRect(x: screen.midX - size.width / 2, y: screen.maxY - size.height, width: size.width, height: size.height)
+    }
+
     /// Un glisser de fichiers est en cours (depuis le Finder, le Bureau, une autre app…).
     private func isDraggingFiles() -> Bool {
         guard Appearance.bool(Appearance.showShelfTabKey) else { return false }
@@ -333,16 +389,11 @@ final class PillWindowController {
         if !previewActive, viewModel.momentHeld { viewModel.momentHeld = false }
 
         if event.type == .leftMouseDown {
-            dragBaseline = NSPasteboard(name: .drag).changeCount
+            startDragWatch()
         }
-
-        // Des fichiers glissés sur l'encoche fermée : elle s'ouvre sur l'étagère pour les accueillir.
-        if event.type == .leftMouseDragged, inside, !viewModel.isExpanded, isDraggingFiles() {
-            expandWork?.cancel()
-            expandWork = nil
-            viewModel.showShelf()
-            expand()
-            return
+        // Glisser de fichiers en cours : vérifié tout de suite, sans attendre la surveillance.
+        if event.type == .leftMouseDragged, dragWatch != nil {
+            checkFileDrag()
         }
 
         if event.type == .leftMouseDown {

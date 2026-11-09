@@ -49,6 +49,19 @@ struct ExpandedPillView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(.bottom, 12)
         }
+        // Des fichiers lâchés n'importe où sur la pastille ouverte vont sur l'étagère
+        // (la page Étagère a son propre dépôt, avec son surlignage).
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            guard showShelfTab else { return false }
+            ShelfView.loadURLs(from: providers) { urls in
+                guard ShelfManager.shared.add(urls) > 0 else { return }
+                viewModel.select(.shelf)
+                if Settings.haptics {
+                    NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+                }
+            }
+            return true
+        }
     }
 
     @ViewBuilder
