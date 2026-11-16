@@ -9,6 +9,12 @@ final class PillViewModel: ObservableObject {
         didSet {
             if state == .compact, oldValue == .expanded {
                 dropMoments { if case .newTrack = $0 { true } else { false } }
+                // La frise rouvre sur aujourd'hui. Après l'animation de fermeture, pour que rien ne bouge à l'écran.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                    guard self?.state == .compact else { return }
+                    let calendar = CalendarManager.shared
+                    if !Calendar.current.isDateInToday(calendar.selectedDate) { calendar.selectedDate = Date() }
+                }
             }
             // Ouverte pendant l'aperçu d'une capture : on arrive sur l'onglet Captures, où elle est en tête.
             if state == .expanded, oldValue == .compact, case .screenshot = moment {
@@ -248,6 +254,23 @@ final class PillViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        CallManager.shared.$call
+            .map { $0 != nil }
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { self?.refreshLiveActivity() }
+            }
+            .store(in: &cancellables)
+
+        // Au-delà d'une heure, la durée s'allonge : la pastille s'élargit d'autant.
+        CallManager.shared.$isLongCall
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] _ in
+                DispatchQueue.main.async { withAnimation(PillAnimation.activity) { self?.objectWillChange.send() } }
+            }
+            .store(in: &cancellables)
+
         FocusManager.shared.changed
             .receive(on: DispatchQueue.main)
             .sink { [weak self] mode, isOn in
@@ -271,7 +294,7 @@ final class PillViewModel: ObservableObject {
 
         CaffeineManager.shared.toggled
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] isOn in self?.enqueue(.caffeine(isOn)) }
+            .sink { [weak self] mode in self?.enqueue(.caffeine(mode)) }
             .store(in: &cancellables)
 
         battery.$isPluggedIn
@@ -346,15 +369,36 @@ final class PillViewModel: ObservableObject {
         case .newTrack: newTrackSideWidth
         case .screenshot: screenshotSideWidth
         case .recording: 62
+        case .call: callSideWidth
         case .focus: focusSideWidth
         case .deviceConnected: deviceSideWidth
-        // Largeur du code (chiffres à ~7,4 pt) + marge extérieure, 2 pt de débord côté encoche.
-        case .code: CGFloat(VerificationCodeManager.shared.current?.code.count ?? 6) * 7.4 + 10
+        case .code: codeSideWidth
         case .timer: timerSideWidth
         case .stopwatch: [48, 56, 68][TimerManager.shared.stopwatchDigits] + 12 - 2
         case .hud: 66
         }
     }
+
+    static let codeFont = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+    static let codeKerning: CGFloat = 1
+
+    /// Comme la musique : la clé à gauche, le code à droite, sans descendre sous l'encoche.
+    /// Les deux côtés prennent la largeur du code (symétrique pour rester centré).
+    private var codeSideWidth: CGFloat {
+        guard let code = VerificationCodeManager.shared.current else { return 30 }
+        let digits = (code.spaced as NSString).size(withAttributes: [.font: Self.codeFont, .kern: Self.codeKerning]).width
+        return max(ceil(digits) + 12 + 4, 30)
+    }
+
+    /// Juste la place de la durée (« 12:05 », ou « 1:02:03 » après une heure) et une petite marge.
+    private var callSideWidth: CGFloat {
+        let sample = CallManager.shared.isLongCall ? "0:00:00" : "00:00"
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+        return ceil((sample as NSString).size(withAttributes: [.font: font]).width) + Self.callPadding + 4
+    }
+
+    /// Marge extérieure de l'appel dans la pastille fermée.
+    static let callPadding: CGFloat = 9
 
     /// Icône + nom de l'appareil à gauche (« AirPods Pro » en entier), pourcentage et anneau à droite.
     private var deviceSideWidth: CGFloat {
@@ -533,6 +577,8 @@ final class PillViewModel: ObservableObject {
             new = .code
         } else if let moment {
             new = moment.activity
+        } else if Appearance.bool(Appearance.callKey), CallManager.shared.call != nil {
+            new = .call
         } else if Appearance.bool(Appearance.recordingKey), ScreenRecordingManager.shared.isRecording {
             new = .recording
         } else if Appearance.bool(Appearance.clockActivityKey), let clock = clockActivity {

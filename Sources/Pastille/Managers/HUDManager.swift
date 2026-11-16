@@ -63,7 +63,8 @@ final class HUDManager: ObservableObject {
     /// elle-même le changement : l'indicateur d'Apple ne s'affiche plus.
     /// Sans elle, on écoute seulement (Surveillance de l'entrée) et les deux indicateurs coexistent.
     private var intercepts = false
-    private var askedAccessibility = false
+    /// Jamais de question au démarrage : seulement via `requestAccess()` (assistant, Réglages).
+    private var askedAccessibility = true
     private var lastBrightnessStep: (key: MediaKey, source: MediaKey.Source, at: Date)?
 
     private func installKeyTap() {
@@ -72,9 +73,6 @@ final class HUDManager: ObservableObject {
         )
         askedAccessibility = true
         guard tap == nil || (trusted && !intercepts) else { return }
-        if !trusted, !CGPreflightListenEventAccess() {
-            CGRequestListenEventAccess()
-        }
 
         let mask = CGEventMask(1 << 14)
             | CGEventMask(1 << CGEventType.keyDown.rawValue)
@@ -112,6 +110,12 @@ final class HUDManager: ObservableObject {
             // On repasse en mode interception dès que l'Accessibilité est accordée.
             scheduleTapRetry()
         }
+    }
+
+    /// Fait apparaître la question de macOS (Accessibilité).
+    func requestAccess() {
+        askedAccessibility = false
+        installKeyTap()
     }
 
     private func scheduleTapRetry() {

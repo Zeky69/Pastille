@@ -20,6 +20,7 @@ struct CompactPillView: View {
     @State private var announcedArtwork: NSImage?
     @State private var announcedVisible = false
     @ObservedObject private var recorder = ScreenRecordingManager.shared
+    @ObservedObject private var calls = CallManager.shared
     /// La pochette et le spectre glissent d'une place à l'autre (en haut ↔ sous l'encoche).
     @Namespace private var morph
 
@@ -29,8 +30,17 @@ struct CompactPillView: View {
         if case .lowBattery(let threshold) = viewModel.moment { threshold } else { nil }
     }
 
-    private var caffeineOn: Bool {
-        if case .caffeine(let isOn) = viewModel.moment { isOn } else { caffeine.isActive }
+    private var caffeineMode: CaffeineMode {
+        if case .caffeine(let mode) = viewModel.moment { mode } else { caffeine.mode }
+    }
+    private var caffeineOn: Bool { caffeineMode != .off }
+    /// Orange : éveillé ; rouge : super tasse (même capot fermé).
+    private var caffeineColor: Color {
+        switch caffeineMode {
+        case .off: Color.white.opacity(0.6)
+        case .awake: .orange
+        case .lidClosed: .red
+        }
     }
 
     var body: some View {
@@ -96,6 +106,10 @@ struct CompactPillView: View {
             RecordingDot()
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 13)
+        case .call:
+            CallIndicator(muted: calls.isMuted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, PillViewModel.callPadding)
         case .focus:
             if case .focus(let mode, let isOn) = viewModel.moment {
                 Image(systemName: mode.symbol)
@@ -146,11 +160,11 @@ struct CompactPillView: View {
                 // Pas de pulsation : un téléchargement peut durer des heures, et l'effet coûtait ~18 % de CPU.
         case .code:
             Image(systemName: codes.copied ? "checkmark.circle.fill" : "key.fill")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.green)
                 .contentTransition(.symbolEffect(.replace))
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 12)
+                .padding(.leading, 11)
         case .update:
             Image(systemName: "arrow.down.circle.fill")
                 .font(.system(size: 13, weight: .semibold))
@@ -160,7 +174,7 @@ struct CompactPillView: View {
         case .caffeine:
             Image(systemName: caffeineOn ? "cup.and.saucer.fill" : "cup.and.saucer")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(caffeineOn ? Color.orange : Color.white.opacity(0.6))
+                .foregroundStyle(caffeineColor)
                 .contentTransition(.symbolEffect(.replace))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 12)
@@ -272,6 +286,17 @@ struct CompactPillView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.trailing, 12)
             }
+        case .call:
+            if let start = calls.call?.startedAt {
+                TimelineView(.periodic(from: start, by: 1)) { context in
+                    Text(Self.elapsed(since: start, at: context.date))
+                        .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(.green)
+                        .fixedSize()
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.trailing, PillViewModel.callPadding)
+            }
         case .focus:
             if case .focus(let mode, let isOn) = viewModel.moment {
                 Text(isOn ? mode.name : "Désactivé")
@@ -325,9 +350,12 @@ struct CompactPillView: View {
             }
         case .code:
             if let code = codes.current {
-                Text(code.code)
-                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(.white)
+                Text(code.spaced)
+                    .font(Font(PillViewModel.codeFont))
+                    .kerning(PillViewModel.codeKerning)
+                    .foregroundStyle(codes.copied ? Color.green : Color.white)
+                    .contentTransition(.opacity)
+                    .lineLimit(1)
                     .fixedSize()
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .padding(.trailing, 12)
@@ -342,9 +370,9 @@ struct CompactPillView: View {
                     .padding(.trailing, 12)
             }
         case .caffeine:
-            Text(caffeineOn ? "Éveillé" : "Veille")
+            Text(caffeineMode == .lidClosed ? "Super" : caffeineOn ? "Éveillé" : "Veille")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(caffeineOn ? Color.orange : Color.white.opacity(0.6))
+                .foregroundStyle(caffeineColor)
                 .fixedSize()
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.trailing, 12)
@@ -467,6 +495,18 @@ private struct PreviewButton: View {
         Button(action: action) { PreviewButtonLabel(symbol: symbol) }
             .buttonStyle(.plain)
             .help(help)
+    }
+}
+
+/// Combiné vert pendant un appel ; micro barré en rouge quand il est coupé depuis la pastille.
+struct CallIndicator: View {
+    let muted: Bool
+
+    var body: some View {
+        Image(systemName: muted ? "mic.slash.fill" : "phone.fill")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(muted ? .red : .green)
+            .contentTransition(.symbolEffect(.replace))
     }
 }
 

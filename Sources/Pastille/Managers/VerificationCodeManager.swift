@@ -8,6 +8,23 @@ struct VerificationCode: Equatable {
     var received: Date
     /// Service qui envoie le code (« Instagram », « Google »…), quand on arrive à le deviner.
     var service: String?
+
+    /// Code coupé en deux pour se lire d'un coup d'œil : « 482 913 », « 1234 5678 ».
+    /// Trop court (ou longueur impaire au-delà de 6) : tel quel.
+    var spaced: String { Self.spaced(code) }
+
+    static func spaced(_ code: String) -> String {
+        guard code.count >= 6, code.count % 2 == 0 else { return code }
+        let middle = code.index(code.startIndex, offsetBy: code.count / 2)
+        return "\(code[..<middle]) \(code[middle...])"
+    }
+
+    /// Légende au-dessus du code : « Code Instagram » (si le réglage « Nom du service » est actif),
+    /// sinon « Code de vérification ».
+    var caption: String {
+        guard Appearance.bool(Appearance.codesSenderKey), let service else { return "Code de vérification" }
+        return "Code \(service)"
+    }
 }
 
 /// Repère les codes de vérification dans les messages reçus (base de Messages) et les mails (app Mail), lus en local.

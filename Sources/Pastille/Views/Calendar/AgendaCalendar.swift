@@ -12,7 +12,7 @@ struct AgendaCalendar: View {
 
     var body: some View {
         if !calendar.hasAccess {
-            Text("L'accès au calendrier est refusé. Veuillez l'activer dans les réglages.")
+            CalendarAccessPrompt()
                 .font(.caption)
                 .foregroundStyle(Color(white: 0.65))
                 .multilineTextAlignment(.center)

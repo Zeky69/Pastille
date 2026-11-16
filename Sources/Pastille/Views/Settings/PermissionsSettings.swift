@@ -17,7 +17,13 @@ struct PermissionsSettings: View {
             } header: {
                 Text("Autorisations de macOS")
             } footer: {
-                Text("Sans une autorisation, seule la fonction concernée s'arrête ; le reste de Pastille continue.")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Sans une autorisation, seule la fonction concernée s'arrête ; le reste de Pastille continue.")
+                    Button("Revoir la présentation des autorisations…") {
+                        (NSApp.delegate as? AppDelegate)?.showOnboarding()
+                    }
+                    .controlSize(.small)
+                }
             }
 
             Section {
@@ -73,13 +79,12 @@ struct HealthRow: View {
                 Text(statusText).font(.caption).foregroundStyle(statusColor)
             }
             Spacer()
-            if item.status != .ok, let pane = item.settingsPane {
-                Button("Ouvrir") {
-                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-                .controlSize(.small)
+            if item.askable, let kind = item.kind {
+                Button("Autoriser…") { Permissions.request(kind) }
+                    .controlSize(.small)
+            } else if item.status != .ok, let pane = item.settingsPane {
+                Button("Ouvrir") { Permissions.openSettingsPane(pane) }
+                    .controlSize(.small)
             }
             Image(systemName: statusSymbol)
                 .foregroundStyle(statusColor)

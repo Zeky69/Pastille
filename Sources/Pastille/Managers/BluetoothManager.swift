@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CoreBluetooth
 import IOBluetooth
 import SwiftUI
 
@@ -42,7 +43,29 @@ final class BluetoothManager: ObservableObject {
         startedAt = Date()
         schedulePoll(every: 120)
         refresh()
+    }
+
+    /// Le module Bluetooth de macOS (connexions, batterie des casques tiers) fait apparaître la question
+    /// de macOS : on ne s'en sert qu'une fois l'accès accordé, demandé par l'assistant ou les Réglages.
+    private var isAuthorized: Bool { CBManager.authorization == .allowedAlways }
+    private var observing = false
+    private var authorizer: BluetoothAuthorizer?
+
+    private func startObservingIfAllowed() {
+        guard isAuthorized, !observing else { return }
+        observing = true
         connectionObserver.start()
+    }
+
+    /// Fait apparaître la question de macOS (Bluetooth).
+    func requestAccess() {
+        authorizer = BluetoothAuthorizer {
+            MainActor.assumeIsolated {
+                let manager = BluetoothManager.shared
+                manager.authorizer = nil
+                manager.refresh()
+            }
+        }
     }
 
     // MARK: - Connexion d'un appareil
@@ -87,8 +110,10 @@ final class BluetoothManager: ObservableObject {
     }
 
     func refresh() {
+        startObservingIfAllowed()
+        let authorized = isAuthorized
         queue.async {
-            let fallback = Self.bluetoothLevels()
+            let fallback = authorized ? Self.bluetoothLevels() : [:]
             let read = Self.read(fallback: fallback)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
@@ -278,3 +303,20 @@ private final class ConnectionObserver: NSObject {
     }
 }
 
+
+/// Un gestionnaire CoreBluetooth suffit à faire poser la question par macOS ; prévient quand c'est répondu.
+private final class BluetoothAuthorizer: NSObject, CBCentralManagerDelegate {
+    private var central: CBCentralManager?
+    private let answered: () -> Void
+
+    init(answered: @escaping () -> Void) {
+        self.answered = answered
+        super.init()
+        central = CBCentralManager(delegate: self, queue: .main)
+    }
+
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        guard CBManager.authorization != .notDetermined else { return }
+        answered()
+    }
+}

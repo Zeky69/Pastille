@@ -24,31 +24,38 @@ enum HealthCheck {
         var status: Status
         /// Volet des Réglages Système à ouvrir pour corriger.
         var settingsPane: String?
+        /// Autorisation que Pastille sait demander elle-même.
+        var kind: Permissions.Kind? = nil
+        /// Jamais demandée : un bouton fait apparaître la question de macOS.
+        var askable = false
     }
 
     // MARK: - Autorisations
 
+    @MainActor
     static func permissions() -> [Item] {
-        [
-            Item(title: "Accessibilité", detail: "Remplacer l'indicateur de volume et de luminosité d'Apple.",
-                 symbol: "accessibility", status: AXIsProcessTrusted() ? .ok : .missing,
-                 settingsPane: "Privacy_Accessibility"),
-            Item(title: "Surveillance de l'entrée", detail: "Repérer les touches de volume et de luminosité.",
+        func item(_ kind: Permissions.Kind, _ title: String, _ detail: String, _ symbol: String) -> Item {
+            let status: Status = switch Permissions.state(of: kind) {
+            case .granted: .ok
+            case .denied: .missing
+            case .notAsked: .unknown("Pas encore demandée — \(detail.prefix(1).lowercased() + detail.dropFirst())")
+            case .unavailable(let reason): .unknown(reason)
+            }
+            return Item(title: title, detail: detail, symbol: symbol, status: status,
+                        settingsPane: Permissions.settingsPane(for: kind), kind: kind,
+                        askable: Permissions.state(of: kind) == .notAsked)
+        }
+        return [
+            item(.accessibility, "Accessibilité", "Remplacer l'indicateur de volume et de luminosité d'Apple.", "accessibility"),
+            Item(title: "Surveillance de l'entrée", detail: "Repérer les touches de volume et de luminosité (sans Accessibilité).",
                  symbol: "keyboard", status: CGPreflightListenEventAccess() ? .ok : .missing,
                  settingsPane: "Privacy_ListenEvent"),
-            Item(title: "Accès complet au disque", detail: "Codes de vérification dans Messages et Mail.",
-                 symbol: "internaldrive", status: canReadMessages ? .ok : .missing,
-                 settingsPane: "Privacy_AllFiles"),
-            Item(title: "Calendrier", detail: "Événements dans la page d'accueil.",
-                 symbol: "calendar", status: EKEventStore.authorizationStatus(for: .event) == .fullAccess ? .ok : .missing,
-                 settingsPane: "Privacy_Calendars"),
-            Item(title: "Localisation", detail: "Météo de l'endroit où tu es.",
-                 symbol: "location.fill", status: locationStatus,
-                 settingsPane: "Privacy_LocationServices"),
-            Item(title: "Bluetooth", detail: "Batterie des casques et appareils connectés.",
-                 symbol: "dot.radiowaves.left.and.right",
-                 status: CBManager.authorization == .allowedAlways ? .ok : .missing,
-                 settingsPane: "Privacy_Bluetooth"),
+            item(.automation, "Musique et Spotify", "Afficher et piloter la lecture.", "music.note"),
+            item(.calendar, "Calendrier", "Événements dans la page d'accueil.", "calendar"),
+            item(.location, "Localisation", "Météo de l'endroit où tu es.", "location.fill"),
+            item(.bluetooth, "Bluetooth", "Batterie des casques et appareils connectés.", "dot.radiowaves.left.and.right"),
+            item(.fullDisk, "Accès complet au disque", "Codes de vérification et mode Concentration.", "internaldrive"),
+            item(.folders, "Bureau et Téléchargements", "Captures d'écran et téléchargements en cours.", "folder.fill"),
         ]
     }
 
@@ -57,14 +64,6 @@ enum HealthCheck {
         guard let handle = FileHandle(forReadingAtPath: path) else { return false }
         try? handle.close()
         return true
-    }
-
-    private static var locationStatus: Status {
-        switch CLLocationManager().authorizationStatus {
-        case .authorizedAlways, .authorizedWhenInUse: .ok
-        case .notDetermined: .unknown("Pas encore demandée")
-        default: .missing
-        }
     }
 
     // MARK: - Fonctions non officielles (peuvent casser avec une mise à jour de macOS)
@@ -80,7 +79,9 @@ enum HealthCheck {
                  settingsPane: nil),
             Item(title: "Batterie des casques", detail: "Module Bluetooth de macOS.",
                  symbol: "headphones",
-                 status: BluetoothManager.levelsReaderWorks() ? .ok : .broken("Le lecteur ne répond plus"),
+                 // Sans l'accès Bluetooth, lancer le lecteur ferait apparaître la question de macOS.
+                 status: CBManager.authorization != .allowedAlways ? .unknown("Bluetooth pas encore autorisé")
+                     : BluetoothManager.levelsReaderWorks() ? .ok : .broken("Le lecteur ne répond plus"),
                  settingsPane: nil),
             Item(title: "Codes dans Messages", detail: "Base de données de Messages.",
                  symbol: "message.fill", status: messagesStatus, settingsPane: "Privacy_AllFiles"),

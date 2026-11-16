@@ -31,6 +31,8 @@ enum Appearance {
     static let powerKey = "activity.power"
     static let recordingKey = "activity.recording"
     static let focusKey = "activity.focus"
+    static let callKey = "activity.call"
+    static let callPauseMusicKey = "call.pauseMusic"
     static let codesMessagesKey = "codes.messages"
     static let codesMailKey = "codes.mail"
     static let musicPriorityKey = "music.priority"
@@ -65,6 +67,8 @@ enum Appearance {
             powerKey: true,
             recordingKey: true,
             focusKey: true,
+            callKey: true,
+            callPauseMusicKey: true,
             codesMessagesKey: true,
             codesMailKey: true,
             musicPriorityKey: true,
@@ -346,7 +350,7 @@ enum Appearance {
         let defaults = UserDefaults.standard
         for key in [clockActivityKey, downloadActivityKey, codeActivityKey, hudActivityKey, batteryAlertKey,
                     deviceConnectedKey, powerKey, codesMessagesKey, codesMailKey,
-                    timerDoneKey, newTrackKey, newTrackManualOnlyKey, codesSenderKey,
+                    timerDoneKey, newTrackKey, newTrackManualOnlyKey, codesSenderKey, callKey, callPauseMusicKey,
                     musicPriorityKey, musicOtherAppsKey, musicSourceBadgeKey, weatherUnitKey, materialKey,
                     Settings.musicLiveActivityKey, Settings.showBatteryPercentKey] {
             defaults.removeObject(forKey: key)

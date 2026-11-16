@@ -5,33 +5,32 @@ struct CodeOrWeatherView: View {
     @ObservedObject private var codes = VerificationCodeManager.shared
     @ObservedObject private var downloads = DownloadManager.shared
     @AppStorage(Appearance.showWeatherKey) private var showWeather = true
-    @AppStorage(Appearance.codesSenderKey) private var showSender = true
+    @State private var hovering = false
 
     var body: some View {
         if let code = codes.current {
+            // Juste la clé et le code, lisibles ; la provenance est dans l'infobulle.
             Button { codes.copy() } label: {
                 HStack(spacing: 5) {
-                    if showSender, let service = code.service {
-                        Text(service)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.7))
-                            .lineLimit(1)
-                        Text("·").foregroundStyle(.white.opacity(0.4))
-                    }
-                    Text(code.code)
-                        .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                    Image(systemName: codes.copied ? "checkmark" : "doc.on.doc")
+                    Image(systemName: codes.copied ? "checkmark" : "key.fill")
                         .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.green)
                         .contentTransition(.symbolEffect(.replace))
+                    Text(code.spaced)
+                        .font(.system(size: 12.5, weight: .semibold).monospacedDigit())
+                        .kerning(0.8)
+                        .foregroundStyle(codes.copied ? Color.green : .white)
+                        .lineLimit(1)
+                        .fixedSize()
                 }
-                .foregroundStyle(codes.copied ? Color.green : .white)
                 .padding(.horizontal, 8)
                 .frame(height: 22)
-                .background(Capsule().fill(Color.green.opacity(codes.copied ? 0.2 : 0.3)))
+                .background(Capsule().fill(Color.white.opacity(hovering ? 0.18 : 0.1)))
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .help(code.sender.isEmpty ? "Copier le code" : "Code reçu de \(code.sender) — cliquer pour copier")
+            .onHover { hovering = $0 }
+            .help(codes.copied ? "Copié" : "\(code.caption)\(code.sender.isEmpty ? "" : " — " + code.sender) · cliquer pour copier")
             .transition(.blurReplace)
         } else if case .downloading(nil) = downloads.state, let measure = downloads.measure {
             // Téléchargement sans pourcentage : total déjà reçu et vitesse.

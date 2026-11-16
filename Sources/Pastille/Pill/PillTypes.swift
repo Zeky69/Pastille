@@ -22,7 +22,7 @@ enum Moment: Equatable {
     case charging, unplugged, charged
     case lowBattery(Int)
     case deviceConnected(BluetoothDevice)
-    case caffeine(Bool)
+    case caffeine(CaffeineMode)
     case timerDone
     case newTrack(Track, NSImage?)
     /// Nouvelle version de Pastille disponible.
@@ -79,4 +79,4 @@ enum Moment: Equatable {
 }
 
 /// Activité affichée de part et d'autre de la pastille compacte (façon « Live Activity »).
-enum LiveActivity: Equatable { case none, music, charging, unplugged, charged, deviceConnected, lowBattery, timer, timerDone, stopwatch, newTrack, download, caffeine, code, hud, update, screenshot, recording, focus }
+enum LiveActivity: Equatable { case none, music, charging, unplugged, charged, deviceConnected, lowBattery, timer, timerDone, stopwatch, newTrack, download, caffeine, code, hud, update, screenshot, recording, focus, call }

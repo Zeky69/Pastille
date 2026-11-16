@@ -99,3 +99,18 @@ import Testing
         #expect(VerificationCodeManager.typedStreamText(slice) == "Votre code est 123456")
     }
 }
+
+/// Le code s'affiche coupé en deux, pour se lire d'un coup d'œil.
+@Suite struct SpacedCodeTests {
+    @Test(arguments: [
+        ("482913", "482 913"),
+        ("12345678", "1234 5678"),
+        ("A1B2C3", "A1B 2C3"),
+        ("1234", "1234"),      // trop court : tel quel
+        ("12345", "12345"),
+        ("1234567", "1234567"), // impair : on ne sait pas où couper
+    ])
+    func splitsInTheMiddle(code: String, shown: String) {
+        #expect(VerificationCode.spaced(code) == shown)
+    }
+}

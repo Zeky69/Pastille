@@ -100,6 +100,7 @@ struct ExpandedPillView: View {
 
             HStack(spacing: compact ? 6 : 10) {
                 // Collés à l'encoche ; la batterie du Mac reste au bord droit.
+                CallControls()
                 RecordingStopButton()
                 DownloadSpeedView()
                     .padding(.leading, 4)
@@ -174,18 +175,70 @@ private struct RecordingStopButton: View {
     }
 }
 
+/// Appel en cours : juste le logo de l'app (un clic ramène l'appel) et le micro à couper.
+private struct CallControls: View {
+    @ObservedObject private var calls = CallManager.shared
+    @State private var hovering = false
+
+    var body: some View {
+        if calls.call != nil {
+            HStack(spacing: 8) {
+                Button { calls.openApp() } label: {
+                    if let icon = calls.appIcon {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .frame(width: 18, height: 18)
+                    } else {
+                        Image(systemName: "phone.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.green)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("Revenir à l'appel (\(calls.appName))")
+
+                if calls.canMute || calls.isMuted {
+                    Button { calls.toggleMute() } label: {
+                        Image(systemName: calls.isMuted ? "mic.slash.fill" : "mic.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 22, height: 22)
+                            .background(Circle().fill(calls.isMuted ? Color.red : Color.white.opacity(hovering ? 0.25 : 0.15)))
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { hovering = $0 }
+                    .help(calls.isMuted ? "Réactiver le micro" : "Couper le micro")
+                }
+            }
+            .padding(.leading, 4)
+        }
+    }
+}
+
 /// Tasse de café : garde le Mac éveillé tant qu'elle est pleine.
+/// Cmd-clic : super tasse, le Mac reste éveillé même capot fermé.
 private struct CaffeineButton: View {
     @ObservedObject private var caffeine = CaffeineManager.shared
 
     var body: some View {
-        Button { caffeine.toggle() } label: {
+        Button {
+            if NSEvent.modifierFlags.contains(.command) { caffeine.toggleSuper() } else { caffeine.toggle() }
+        } label: {
             Image(systemName: caffeine.isActive ? "cup.and.saucer.fill" : "cup.and.saucer")
                 .font(.system(size: 12))
-                .foregroundStyle(caffeine.isActive ? Color.orange : .gray)
+                .foregroundStyle(caffeine.isSuper ? Color.red : caffeine.isActive ? Color.orange : .gray)
                 .contentTransition(.symbolEffect(.replace))
         }
         .buttonStyle(.plain)
-        .help(caffeine.isActive ? "Mac maintenu éveillé — cliquer pour rétablir la veille" : "Garder le Mac éveillé")
+        .help(help)
+    }
+
+    private var help: String {
+        switch caffeine.mode {
+        case .off: "Garder le Mac éveillé — Cmd-clic : même capot fermé"
+        case .awake: "Mac maintenu éveillé — cliquer pour rétablir la veille, Cmd-clic : même capot fermé"
+        case .lidClosed: "Mac éveillé même capot fermé — cliquer pour rétablir la veille"
+        }
     }
 }

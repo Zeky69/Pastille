@@ -97,6 +97,23 @@ import Testing
         #expect(pause == nil)
         #expect(shown(nil, at: 31) == nil)
     }
+
+    @Test func pauseFoundAtLaunchIsNotShown() {
+        let now = Date()
+        var pause: (value: ClockStopwatch, since: Date)?
+        let paused = ClockStopwatch(offset: 2, startDate: nil)
+        TimerManager.ignoreExistingPause(paused, \.isPaused, pause: &pause)
+        #expect(TimerManager.hidingStalePause(paused, \.isPaused, pause: &pause, now: now) == nil)
+        // Relancé puis remis en pause : cette nouvelle pause s'affiche.
+        let running = ClockStopwatch(offset: 2, startDate: now)
+        #expect(TimerManager.hidingStalePause(running, \.isPaused, pause: &pause, now: now) == running)
+        let pausedAgain = ClockStopwatch(offset: 6, startDate: nil)
+        #expect(TimerManager.hidingStalePause(pausedAgain, \.isPaused, pause: &pause, now: now + 4) == pausedAgain)
+        // Rien en pause au lancement : rien à oublier.
+        var none: (value: ClockStopwatch, since: Date)?
+        TimerManager.ignoreExistingPause(running, \.isPaused, pause: &none)
+        #expect(none == nil)
+    }
 }
 
 /// Crans du volume et de la luminosité.
@@ -190,6 +207,26 @@ import Testing
     func detectsManualSkips(duration: Double, elapsed: Double, skipped: Bool) {
         #expect(MusicManager.wasSkipped(duration: duration, elapsed: elapsed) == skipped)
     }
+
+    @Test func announcesOnlyWhatFollowsAPlayingTrack() {
+        let now = Date()
+        // Morceau suivant (ou enchaînement) pendant que Spotify jouait : annoncé.
+        #expect(MusicManager.followsOn(wasPlaying: true, previousSource: "com.spotify.client", stoppedPlaying: nil,
+                                       newSource: "com.spotify.client", now: now))
+        // Courte pause signalée entre deux morceaux : toujours la suite.
+        #expect(MusicManager.followsOn(wasPlaying: false, previousSource: nil,
+                                       stoppedPlaying: ("com.apple.Music", now.addingTimeInterval(-1)),
+                                       newSource: "com.apple.Music", now: now))
+        // Rien ne jouait depuis longtemps : c'est moi qui lance un son, pas d'annonce.
+        #expect(!MusicManager.followsOn(wasPlaying: false, previousSource: "com.spotify.client",
+                                        stoppedPlaying: ("com.spotify.client", now.addingTimeInterval(-600)),
+                                        newSource: "com.spotify.client", now: now))
+        #expect(!MusicManager.followsOn(wasPlaying: false, previousSource: nil, stoppedPlaying: nil,
+                                        newSource: "com.spotify.client", now: now))
+        // Une vidéo lancée dans le navigateur pendant que Spotify jouait : pas une suite.
+        #expect(!MusicManager.followsOn(wasPlaying: true, previousSource: "com.spotify.client", stoppedPlaying: nil,
+                                        newSource: "com.brave.Browser", now: now))
+    }
 }
 
 /// Fenêtre qui recouvre l'écran de l'encoche (plein écran maison des lecteurs et des jeux).
@@ -212,5 +249,24 @@ import Testing
     @Test func windowOnAnotherScreenDoesNotCover() {
         // Écran externe au-dessus de l'écran principal : la fenêtre plein écran est là-haut.
         #expect(!PillWindowController.covers(CGRect(x: 0, y: -1080, width: 1920, height: 1080), screen: screen, primaryHeight: 982))
+    }
+}
+
+@Suite struct SuperCaffeineTests {
+    @Test func stopsOnLowBatteryOnly() {
+        #expect(CaffeineManager.shouldStopForBattery(level: 10, pluggedIn: false, hasBattery: true))
+        #expect(!CaffeineManager.shouldStopForBattery(level: 11, pluggedIn: false, hasBattery: true))
+        #expect(!CaffeineManager.shouldStopForBattery(level: 5, pluggedIn: true, hasBattery: true))
+        #expect(!CaffeineManager.shouldStopForBattery(level: 0, pluggedIn: false, hasBattery: false))
+    }
+
+    @Test func sudoersRuleAllowsOnlyDisablesleep() {
+        #expect(CaffeineManager.sudoersRule(for: "macky")
+            == "macky ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 0, /usr/bin/pmset -a disablesleep 1")
+    }
+
+    @Test func sleepFlagIsReadable() {
+        // Lecture sans droits : ne doit pas planter (la valeur dépend de la machine).
+        _ = CaffeineManager.isSleepDisabled
     }
 }

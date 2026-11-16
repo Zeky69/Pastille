@@ -34,13 +34,18 @@ final class MusicManager: ObservableObject {
     static let shared = MusicManager()
 
     @Published private(set) var track: Track?
-    @Published private(set) var isPlaying = false
+    @Published private(set) var isPlaying = false {
+        // Quelle app jouait, et quand elle s'est arrêtée : un morceau qui arrive juste après prend la suite.
+        didSet { if oldValue, !isPlaying { stoppedPlaying = (source?.bundleID, Date()) } }
+    }
+    private var stoppedPlaying: (source: String?, at: Date)?
     @Published private(set) var artwork: NSImage?
     @Published private(set) var accentColor: Color = .white
     @Published private(set) var source: AudioSource?
     /// Pochette floutée une fois pour toutes (fond du style Immersif), au lieu d'un flou recalculé à chaque image.
     @Published private(set) var blurredArtwork: NSImage?
-    /// Un autre morceau commence (pas au lancement de Pastille) : bref affichage du titre.
+    /// La musique passe au morceau suivant (pas au lancement de Pastille, ni quand on lance soi-même
+    /// un son alors que rien ne jouait) : bref affichage du titre.
     let trackChanged = PassthroughSubject<Track, Never>()
     private let startedAt = Date()
 
@@ -84,8 +89,21 @@ final class MusicManager: ObservableObject {
             }
         }
         playersPoll?.tolerance = 1
+        // Flux abandonné (tombé en boucle) : on le relance au prochain signe de vie — sortie de veille,
+        // ou Musique/Spotify qui joue ou change de morceau — plutôt qu'à intervalles réguliers.
+        for name in LegacyPlayers.notificationNames {
+            DistributedNotificationCenter.default().addObserver(forName: .init(name), object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { MusicManager.shared.reviveStream() }
+            }
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { MusicManager.shared.reviveStream() }
+        }
         startStream()
     }
+
+    /// Relit Musique et Spotify (après l'assistant ou une autorisation accordée).
+    func refreshPlayers() { legacy.refresh() }
 
     /// Position extrapolée à `date` (évite d'interroger le lecteur à chaque frame).
     func elapsed(at date: Date = Date()) -> Double {
@@ -253,6 +271,14 @@ final class MusicManager: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { MusicManager.shared.startStream() }
     }
 
+    /// Nouvelle chance pour un flux abandonné ; s'il retombe en boucle, il attendra l'événement suivant.
+    private func reviveStream() {
+        guard streamBroken, stream == nil else { return }
+        streamBroken = false
+        streamFailures = []
+        startStream()
+    }
+
     private func receive(_ data: Data) {
         buffer.append(data)
         while let newline = buffer.firstIndex(of: 0x0A) {
@@ -339,8 +365,12 @@ final class MusicManager: ObservableObject {
             let previous = track
             // Où en était le morceau précédent (position pas encore remplacée par celle du nouveau) ?
             let skipped = previous.map { Self.wasSkipped(duration: $0.duration, elapsed: elapsed()) } ?? false
+            // On n'annonce que la suite d'une lecture en cours, dans la même app : un son lancé alors que
+            // rien ne jouait (ou depuis une autre app), c'est l'utilisateur qui l'a choisi.
+            let followsOn = Self.followsOn(wasPlaying: isPlaying, previousSource: source?.bundleID,
+                                           stoppedPlaying: stoppedPlaying, newSource: info["bundle"] as? String)
             track = newTrack
-            if previous != nil, Date().timeIntervalSince(startedAt) > 3 { scheduleAnnouncement(of: newTrack, skipped: skipped) }
+            if followsOn, Date().timeIntervalSince(startedAt) > 3 { scheduleAnnouncement(of: newTrack, skipped: skipped) }
         }
 
         rate = (info["rate"] as? NSNumber)?.doubleValue ?? 1
@@ -380,6 +410,17 @@ final class MusicManager: ObservableObject {
         }
         announcementWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+    }
+
+    /// Le nouveau morceau prend-il la suite d'une lecture (morceau suivant, enchaînement) ?
+    /// Oui si quelque chose jouait dans la même app, ou s'y est arrêté il y a moins de 3 s (entre deux
+    /// morceaux, les apps signalent souvent une courte pause, voire aucun titre).
+    nonisolated static func followsOn(wasPlaying: Bool, previousSource: String?,
+                                      stoppedPlaying: (source: String?, at: Date)?, newSource: String?,
+                                      now: Date = Date()) -> Bool {
+        if wasPlaying { return previousSource == newSource }
+        guard let stoppedPlaying, now.timeIntervalSince(stoppedPlaying.at) < 3 else { return false }
+        return stoppedPlaying.source == newSource
     }
 
     /// Le morceau a-t-il été coupé avant sa fin (« Suivant », « Précédent »…) plutôt que joué jusqu'au bout ?

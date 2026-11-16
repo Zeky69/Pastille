@@ -138,7 +138,7 @@ import Testing
 
     @Test func durationsArePositive() {
         let all: [Moment] = [.charging, .unplugged, .charged, .lowBattery(5), .deviceConnected(airPods()),
-                             .caffeine(true), .timerDone, .newTrack(track, nil), .update("0.2.0"),
+                             .caffeine(.awake), .caffeine(.lidClosed), .timerDone, .newTrack(track, nil), .update("0.2.0"),
                              .screenshot(shot, 0.625),
                              .focus(FocusMode(id: "x", name: "Travail", symbol: "moon.fill", tint: ""), true)]
         for moment in all {

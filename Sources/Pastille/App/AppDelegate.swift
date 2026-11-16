@@ -2,28 +2,32 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWindowDelegate {
     private var pillController: PillWindowController?
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
+    private var onboardingWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Settings.registerDefaults()
         Appearance.registerDefaults()
+        // Aucune question de macOS au démarrage : l'assistant les pose une à une, après explication.
+        Permissions.adoptPreviousInstallIfNeeded()
 
         MusicManager.shared.start()
         BatteryManager.shared.start()
         CalendarManager.shared.start()
-        ScreenshotManager.shared.start()
+        Permissions.startFolderWatchersIfAllowed()
         ScreenRecordingManager.shared.start()
+        CallManager.shared.start()
         FocusManager.shared.start()
         HUDManager.shared.start()
         TimerManager.shared.start()
         BluetoothManager.shared.start()
         WeatherManager.shared.start()
-        DownloadManager.shared.start()
         VerificationCodeManager.shared.start()
         UpdateManager.shared.start()
+        CaffeineManager.shared.start()
 
         pillController = PillWindowController()
         pillController?.onOpenSettings = { [weak self] in self?.openSettings() }
@@ -35,6 +39,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
+
+        if !Onboarding.isDone {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.showOnboarding() }
+        }
+
+        // Arrêt par signal (pkill, fermeture de session) : quitter proprement pour rétablir la veille.
+        signal(SIGTERM, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        source.setEventHandler { NSApp.terminate(nil) }
+        source.resume()
+        termination = source
+    }
+
+    private var termination: DispatchSourceSignal?
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // La super tasse ne doit jamais survivre à Pastille : un Mac qui ne dort plus capot fermé chauffe dans un sac.
+        CaffeineManager.shared.stop()
+    }
+
+    // MARK: - Assistant des autorisations
+
+    func showOnboarding() {
+        if onboardingWindow == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 580, height: 620),
+                styleMask: [.titled, .closable, .fullSizeContentView],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "Bienvenue dans Pastille"
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.isMovableByWindowBackground = true
+            window.contentView = NSHostingView(rootView: OnboardingView { [weak window] in window?.close() })
+            window.isReleasedWhenClosed = false
+            window.delegate = self
+            window.center()
+            onboardingWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        onboardingWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Assistant terminé ou fermé : les fonctions qui attendaient (Musique, Spotify, captures,
+    /// téléchargements) démarrent avec les autorisations accordées.
+    func windowWillClose(_ notification: Notification) {
+        guard (notification.object as? NSWindow) === onboardingWindow else { return }
+        Onboarding.markDone()
+        onboardingWindow = nil
+        MusicManager.shared.refreshPlayers()
+        Permissions.startFolderWatchersIfAllowed()
     }
 
     @objc private func screensChanged() {

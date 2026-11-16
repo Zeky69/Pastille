@@ -32,14 +32,8 @@ final class CalendarManager: ObservableObject {
     private var timer: Timer?
 
     func start() {
-        store.requestFullAccessToEvents { granted, _ in
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    self.hasAccess = granted
-                    self.reload()
-                }
-            }
-        }
+        // Pas de question au démarrage : l'assistant ou les Réglages la posent, après explication.
+        reload()
         NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: store, queue: .main) { _ in
             MainActor.assumeIsolated { self.reload() }
         }
@@ -48,7 +42,22 @@ final class CalendarManager: ObservableObject {
         }
     }
 
+    /// Fait apparaître la question de macOS (Calendrier).
+    func requestAccess() {
+        store.requestFullAccessToEvents { _, _ in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { CalendarManager.shared.reload() }
+            }
+        }
+    }
+
+    /// Accès jamais demandé : la pastille propose de le demander plutôt que d'afficher « refusé ».
+    var canRequestAccess: Bool { EKEventStore.authorizationStatus(for: .event) == .notDetermined }
+
     func reload() {
+        // L'accès peut être accordé ou retiré à tout moment dans Réglages Système.
+        let granted = EKEventStore.authorizationStatus(for: .event) == .fullAccess
+        if hasAccess != granted { hasAccess = granted }
         guard hasAccess else { return }
         let cal = Calendar.current
         let start = cal.startOfDay(for: selectedDate)

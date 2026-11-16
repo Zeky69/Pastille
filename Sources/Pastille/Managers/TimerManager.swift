@@ -59,6 +59,10 @@ final class TimerManager: ObservableObject {
     private var stopwatchPause: (value: ClockStopwatch, since: Date)?
 
     func start() {
+        // Déjà en pause au lancement de Pastille : pause ancienne, rien à montrer (elle reviendra si
+        // on la relance). Sinon chaque lancement réaffichait 10 s un chronomètre oublié dans Horloge.
+        Self.ignoreExistingPause(ClockTimerSource.read(), \.isPaused, pause: &timerPause)
+        Self.ignoreExistingPause(ClockTimerSource.readStopwatch(), \.isPaused, pause: &stopwatchPause)
         poll = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
             MainActor.assumeIsolated { TimerManager.shared.refresh() }
         }
@@ -95,6 +99,14 @@ final class TimerManager: ObservableObject {
         let since = pause?.value == value ? pause?.since ?? now : now
         pause = (value, since)
         return now.timeIntervalSince(since) < pausedLifetime ? value : nil
+    }
+
+    /// Une pause trouvée au lancement compte comme déjà expirée.
+    nonisolated static func ignoreExistingPause<T: Equatable>(
+        _ value: T?, _ isPaused: KeyPath<T, Bool>, pause: inout (value: T, since: Date)?
+    ) {
+        guard let value, value[keyPath: isPaused] else { return }
+        pause = (value, .distantPast)
     }
 
     /// Fait disparaître le minuteur pile à la fin, sans attendre la prochaine relecture.

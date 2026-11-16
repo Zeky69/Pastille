@@ -87,3 +87,19 @@ struct EventRow: View {
 }
 
 // MARK: - Style « Liste »
+
+/// Calendrier pas encore autorisé : la pastille propose de poser la question ; refusé : où le réactiver.
+struct CalendarAccessPrompt: View {
+    var body: some View {
+        if CalendarManager.shared.canRequestAccess {
+            VStack(spacing: 6) {
+                Text("Affiche ici tes événements du jour (lecture seule).")
+                Button("Autoriser le calendrier") { Permissions.request(.calendar) }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
+        } else {
+            Text("L'accès au calendrier est refusé. Active-le dans Réglages › Autorisations.")
+        }
+    }
+}

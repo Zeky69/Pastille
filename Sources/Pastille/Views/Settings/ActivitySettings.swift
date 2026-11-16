@@ -22,6 +22,8 @@ struct ActivitySettings: View {
     @AppStorage(Appearance.codesSenderKey) private var codesSender = true
     @AppStorage(Appearance.recordingKey) private var recording = true
     @AppStorage(Appearance.focusKey) private var focus = true
+    @AppStorage(Appearance.callKey) private var call = true
+    @AppStorage(Appearance.callPauseMusicKey) private var callPauseMusic = true
 
     var body: some View {
         Form {
@@ -35,6 +37,9 @@ struct ActivitySettings: View {
                 row("battery.25", .red, "Batterie faible", "Alerte à 20 %, 10 % et 5 %.", $battery)
                 row("bolt.fill", .green, "Branchement et charge complète", "Éclair au branchement et au débranchement, « Chargé » à 100 %.", $power)
                 row("headphones", .indigo, "Appareil connecté", "Casque, AirPods ou clavier qui se connecte, avec sa batterie.", $deviceConnected)
+                row("phone.fill", .green, "Appel en cours", "Durée de l'appel pendant que tu es en appel. Dans la pastille ouverte : le logo de l'app pour revenir à l'appel, et le micro à couper.", $call)
+                row("pause.circle.fill", .green, "Musique en pause pendant un appel", "Reprend toute seule quand l'appel se termine.", $callPauseMusic)
+                    .disabled(!call)
                 row("record.circle", .red, "Enregistrement d'écran", "Point rouge et durée pendant un enregistrement ⌘⇧5. Stop dans la pastille ouverte.", $recording)
                 row("moon.fill", .indigo, "Mode Concentration", "Annonce Ne pas déranger, Sommeil, Travail… quand il s'active ou se termine (accès complet au disque).", $focus)
             } header: {
@@ -45,7 +50,7 @@ struct ActivitySettings: View {
                 row("music.quarternote.3", .pink, "Priorité à la musique", "Une vidéo ne s'affiche que si aucune musique ne joue.", $musicPriority)
                 row("play.rectangle.fill", .red, "Son des autres apps", "YouTube dans le navigateur, vidéos, podcasts… (coupé : Musique, Spotify, Deezer… seulement).", $musicOtherApps)
                 row("app.badge.fill", .gray, "Icône de l'app sur la pochette", "Pour savoir d'où vient le son.", $sourceBadge)
-                row("music.note.list", .purple, "Nouveau morceau", "Pochette et titre 2 secondes dans la pastille fermée quand la chanson change.", $newTrack)
+                row("music.note.list", .purple, "Nouveau morceau", "Pochette et titre 2 secondes dans la pastille fermée quand la musique passe au morceau suivant. Pas quand tu lances toi-même un son.", $newTrack)
                 row("forward.fill", .purple, "Seulement quand je change de morceau", "Avec « Suivant », « Précédent », les AirPods… Pas quand la chanson suivante s'enchaîne toute seule.", $newTrackManualOnly)
                     .disabled(!newTrack)
             } header: {
@@ -55,7 +60,7 @@ struct ActivitySettings: View {
             Section {
                 row("message.fill", .green, "Messages", "SMS et iMessages reçus sur le Mac.", $codesMessages)
                 row("envelope.fill", .blue, "Mail", "Mails reçus dans l'app Mail.", $codesMail)
-                row("person.text.rectangle", .gray, "Nom du service", "« Instagram · 482913 » quand l'expéditeur est reconnaissable.", $codesSender)
+                row("person.text.rectangle", .gray, "Nom du service", "« Code Instagram » au-dessus du code quand l'expéditeur est reconnaissable.", $codesSender)
             } header: {
                 Text("Où chercher les codes de vérification")
             }

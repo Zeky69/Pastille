@@ -18,6 +18,9 @@ final class LegacyPlayers {
         var isRunning: Bool { !NSRunningApplication.runningApplications(withBundleIdentifier: rawValue).isEmpty }
     }
 
+    /// Notifications envoyées par Musique et Spotify à chaque lecture, pause ou changement de morceau.
+    static var notificationNames: [String] { Player.allCases.map(\.notification) }
+
     private var current: Player?
     private var onChange: (([String: Any]) -> Void)?
     /// Pochettes Spotify déjà téléchargées, par adresse.
@@ -65,6 +68,8 @@ final class LegacyPlayers {
     }
 
     func refresh() {
+        // Avant la fin de l'assistant, pas d'AppleScript : macOS poserait sa question sans explication.
+        guard Onboarding.isDone else { return }
         let running = Player.allCases.filter(\.isRunning)
         let preferred = current
         let cache = spotifyArtwork

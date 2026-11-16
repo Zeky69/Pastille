@@ -36,7 +36,7 @@ struct WheelCalendar: View {
             .frame(height: 50)
 
             if !calendar.hasAccess {
-                Text("L'accès au calendrier est refusé. Veuillez l'activer dans les réglages.")
+                CalendarAccessPrompt()
                     .font(.caption)
                     .foregroundStyle(secondary)
                     .multilineTextAlignment(.center)

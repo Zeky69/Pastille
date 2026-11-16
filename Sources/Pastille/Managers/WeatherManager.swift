@@ -35,17 +35,21 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
                 if unit != manager.unit { manager.unit = unit; manager.fetch() }
             }
         }
-        location.requestWhenInUseAuthorization()
         // Position demandée une fois par mise à jour (pas de suivi continu) ; la météo suit.
-        location.requestLocation()
+        // Pas de question au démarrage : l'assistant ou les Réglages la posent, après explication.
+        if isAuthorized { location.requestLocation() }
         poll = Timer.scheduledTimer(withTimeInterval: Self.refreshInterval, repeats: true) { _ in
-            MainActor.assumeIsolated { WeatherManager.shared.location.requestLocation() }
+            MainActor.assumeIsolated {
+                let manager = WeatherManager.shared
+                if manager.isAuthorized { manager.location.requestLocation() }
+            }
         }
         poll?.tolerance = 60
     }
 
     /// À l'ouverture de la pastille : on ne recharge que si la météo date de plus de 30 min.
     func refreshIfStale() {
+        guard isAuthorized else { return }
         if let lastFetch, Date().timeIntervalSince(lastFetch) < Self.refreshInterval { return }
         lastFetch = Date()
         location.requestLocation()
@@ -95,8 +99,24 @@ final class WeatherManager: NSObject, ObservableObject, CLLocationManagerDelegat
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         DispatchQueue.main.async {
-            MainActor.assumeIsolated { WeatherManager.shared.location.requestLocation() }
+            MainActor.assumeIsolated {
+                let manager = WeatherManager.shared
+                if manager.isAuthorized { manager.location.requestLocation() }
+            }
         }
+    }
+
+    private var isAuthorized: Bool {
+        switch location.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse: true
+        default: false
+        }
+    }
+
+    /// Fait apparaître la question de macOS (Localisation).
+    func requestAccess() {
+        location.requestWhenInUseAuthorization()
+        location.requestLocation()
     }
 
     /// Position indisponible : on garde la dernière connue pour la météo.
