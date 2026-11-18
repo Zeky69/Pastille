@@ -22,7 +22,8 @@ import Testing
         let version = try #require(info["CFBundleShortVersionString"] as? String)
         let notes = root.appendingPathComponent("docs/releases/\(version).md")
         let text = try String(contentsOf: notes, encoding: .utf8)
-        #expect(text.contains("Nouveautés"))
+        // Une version corrective peut n'avoir que des corrections.
+        #expect(text.contains("## Nouveautés") || text.contains("## Corrections"))
         // Les instructions d'installation citent la bonne archive.
         #expect(text.contains("Pastille-\(version).zip"))
     }
