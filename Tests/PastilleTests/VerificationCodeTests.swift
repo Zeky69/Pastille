@@ -17,6 +17,13 @@ import Testing
         // Montants, dates et pourcentages écartés.
         ("Paiement de 1250 € validé. Code de sécurité : 774411", "774411"),
         ("Le 01/11/2026, votre code de connexion est 3390", "3390"),
+        ("482913 est votre code de vérification", "482913"),
+        ("Your one-time passcode: 662190", "662190"),
+        ("Votre code\u{00A0}: 913 004", "913004"),
+        // Mail : le code au milieu d'un pied de page plein de nombres.
+        ("Your security code is 123456. Copyright 2026 Microsoft, 1 Microsoft Way, Redmond, WA 98052", "123456"),
+        ("Bonjour Jean, merci de votre inscription. Votre code de vérification : 552901 Ce code expire dans 10 minutes. © 2026 Acme, 12 rue de Paris 75002 Paris", "552901"),
+        ("Commande n° 773120 – votre code de retrait est 4417", "4417"),
     ])
     func findsTheCode(text: String, expected: String) {
         #expect(VerificationCodeManager.extractCode(from: text) == expected)
@@ -30,6 +37,19 @@ import Testing
         "Code promo : -20 % sur votre commande de 1250 €",
         "Votre code expire le 12/11/2026",
         "Code : appelez le 0612345678",
+        // Années, codes promo, codes postaux, références : jamais un code.
+        "Newsletter de novembre 2026 : découvrez nos offres, code promo NOEL",
+        "Black Friday : -30 % avec le code BLACK2026 jusqu'au 30/11",
+        "Utilisez le code promo 4821 pour 10 % de réduction",
+        "Votre code postal : 75011",
+        "Votre commande n° 482913 est confirmée. Code de suivi disponible demain.",
+        "Facture 2026-11 : 1250 EUR. Pour toute question, code client 88231",
+        "© 2026 Apple Inc. Si vous avez une question sur le code de la route",
+        "Réunion le 18 novembre 2026 à 14:30, pensez à votre code d'accès",
+        "Code : 2026",
+        "Votre code de vérification expirera en 2026",
+        "Bonjour, vous avez reçu 1500 points. Le code avantage vous attend sur l'appli",
+        "Merci pour votre commande #123456 ! Profitez du code SAVE10",
         "",
     ])
     func ignoresTextsWithoutCode(text: String) {

@@ -9,6 +9,8 @@ final class MailCodeSource: @unchecked Sendable {
         var code: String
         var sender: String
         var date: Date
+        /// Texte où le code a été trouvé (objet + résumé ou corps), pour le journal local.
+        var text: String
     }
 
     private let root: URL? = {
@@ -84,14 +86,16 @@ final class MailCodeSource: @unchecked Sendable {
             let date = Date(timeIntervalSince1970: Double(sqlite3_column_int64(statement, 4)))
 
             // L'objet suffit souvent (« Votre code : 123456 ») ; sinon on lit le corps du mail.
-            var code = VerificationCodeManager.extractCode(from: subject + "\n" + summary)
+            var source = subject + "\n" + summary
+            var code = VerificationCodeManager.extractCode(from: source)
             if code == nil {
                 guard let body = body(of: id) else { continue }  // pas encore téléchargé : on réessaiera
-                code = VerificationCodeManager.extractCode(from: subject + "\n" + body)
+                source = subject + "\n" + body
+                code = VerificationCodeManager.extractCode(from: source)
             }
             handled.insert(id)
             if found == nil, let code {
-                found = Found(code: code, sender: sender, date: date)
+                found = Found(code: code, sender: sender, date: date, text: source)
             }
         }
         return found

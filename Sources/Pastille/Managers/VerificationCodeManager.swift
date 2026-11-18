@@ -138,6 +138,7 @@ final class VerificationCodeManager: ObservableObject {
                     let manager = VerificationCodeManager.shared
                     if let result, readsMessages, manager.lastRowID == since { manager.apply(result) }
                     if let mailCode, Appearance.bool(Appearance.codesMailKey) {
+                        CodeLog.write(code: mailCode.code, source: "Mail", sender: mailCode.sender, text: mailCode.text)
                         manager.show(VerificationCode(
                             code: mailCode.code, sender: mailCode.sender, received: mailCode.date,
                             service: Self.serviceName(text: "", sender: mailCode.sender)
@@ -160,6 +161,7 @@ final class VerificationCodeManager: ObservableObject {
             // Plusieurs codes arrivés d'un coup : le plus récent est le bon.
             guard !isFirstRead, let message = Self.newestWithCode(messages.map { ($0.text, $0) }),
                   let code = Self.extractCode(from: message.text) else { return }
+            CodeLog.write(code: code, source: "Messages", sender: message.sender, text: message.text)
             show(VerificationCode(
                 code: code, sender: message.sender, received: message.date,
                 service: Self.serviceName(text: message.text, sender: message.sender)
@@ -334,31 +336,124 @@ final class VerificationCodeManager: ObservableObject {
 
     // MARK: - Détection du code
 
-    nonisolated private static let keywords = [
-        "code", "vérification", "verification", "verify", "otp", "authentif",
-        "authentication", "connexion", "login", "sign in", "sécurité", "security", "passcode",
-        "pin", "2fa", "mot de passe", "password", "validation", "valider",
+    /// Mots qui annoncent un code. Le code doit se trouver juste à côté (avant ou après) :
+    /// un nombre perdu ailleurs dans le message (date, adresse, commande…) n'est jamais retenu.
+    nonisolated private static let anchorPattern = try? NSRegularExpression(pattern: #"""
+        (?ix)(?<![\p{L}\d])(?:
+            codes? | otp | passcode | pin | 2fa | mfa | one[- ]time | usage\ unique |
+            mot\ de\ passe\ (?:temporaire|unique) | v[ée]rification | verify | v[ée]rifier |
+            authentification | authentication
+        )(?![\p{L}\d])
+        """#)
+
+    /// « code » dans un autre sens : code promo, code postal, code client…
+    nonisolated private static let unrelatedAfter = [
+        "promo", "postal", "de réduction", "réduction", "reduc", "de remise", "remise", "avantage", "cadeau",
+        "client", "article", "produit", "source", "barre", "-barre", "couleur", "de la route", "du travail",
+        "civil", "pénal", "ape", "naf", "iban", "bic", "swift", "banque", "guichet", "parrainage",
+        "de parrainage", "de suivi", "suivi", "offre", "privilège", "vip", "pays", "région", "qr",
+        "de promotion", "promotionnel", "d'invitation", "invitation", "de commande", "commande",
+        "de réservation", "réservation", "booking", "tracking",
+    ]
+    nonisolated private static let unrelatedBefore = [
+        "zip", "postal", "promo", "discount", "coupon", "gift", "referral", "source", "qr", "dress", "area",
+        "country", "tracking", "voucher", "bar", "promotional", "invite", "invitation", "booking", "error",
+        "erreur", "status", "html",
     ]
 
-    /// Un code de 4 à 8 chiffres (ou « 123-456 », « 123 456 », « G-123456 ») dans un message qui en parle.
-    nonisolated static func extractCode(from text: String) -> String? {
-        let lowered = text.lowercased()
-        guard keywords.contains(where: lowered.contains) else { return nil }
+    /// Mots qui, juste avant un nombre, en font une référence et non un code.
+    nonisolated private static let referenceWords = [
+        "n°", "nº", "no", "no.", "num", "numéro", "number", "#", "réf", "ref", "réf.", "ref.", "référence",
+        "reference", "commande", "order", "facture", "invoice", "dossier", "ticket", "client", "contrat",
+        "colis", "suivi", "tél", "tel", "tél.", "tel.", "phone", "fax", "siret", "siren", "rue", "bp", "cedex",
+    ]
 
-        let range = NSRange(text.startIndex..., in: text)
-        func matches(_ pattern: String) -> [String] {
-            guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
-            return regex.matches(in: text, range: range).compactMap { Range($0.range, in: text).map { String(text[$0]) } }
+    /// Unités ou mots qui, juste après un nombre, en font un montant ou une quantité.
+    nonisolated private static let unitWords = [
+        "eur", "euro", "euros", "usd", "chf", "gbp", "dollars", "points", "pts", "km", "kg", "mo", "go", "ko",
+        "ans", "mois", "jours", "heures", "minutes", "min", "habitants", "personnes", "fois", "abonnés",
+    ]
+
+    /// Code de 4 à 8 chiffres (ou « 123-456 », « 123 456 », « G-123456 ») placé tout contre un mot
+    /// comme « code », « OTP », « vérification ». Les années, montants, dates, heures, numéros de
+    /// téléphone, de commande, codes promo et codes postaux sont écartés.
+    nonisolated static func extractCode(from rawText: String) -> String? {
+        // Espaces insécables (fréquents dans les mails) → espaces simples.
+        let text = rawText.replacingOccurrences(of: "[\u{00A0}\u{202F}\u{2007}\u{2009}]", with: " ", options: .regularExpression)
+        let ns = text as NSString
+        let whole = NSRange(location: 0, length: ns.length)
+
+        func lastWord(before location: Int) -> String {
+            let start = max(0, location - 20)
+            let chunk = ns.substring(with: NSRange(location: start, length: location - start)).lowercased()
+            return chunk.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" || $0 == ":" || $0 == "(" })
+                .last.map(String.init) ?? ""
         }
-        // « 123-456 » ou « 123 456 » → « 123456 ».
-        if let split = matches(#"(?<![\d€$£,./])(?<![€$£] )\d{3}[- ]\d{3}(?! ?[\d€$£/])"#).first {
-            return split.filter(\.isNumber)
+        func following(_ location: Int, _ length: Int = 24) -> String {
+            let end = min(ns.length, location + length)
+            return ns.substring(with: NSRange(location: location, length: end - location)).lowercased()
         }
-        // Les montants (« 1250 € ») et les dates (« 01/11/2026 ») sont écartés.
-        // Plusieurs nombres : on préfère 6 chiffres (le format le plus courant), sinon le premier.
-        let numbers = matches(#"(?<![\d€$£,./#])(?<![€$£] )\d{4,8}(?! ?[€$£%]|[\d/]|[,.]\d)"#)
-        if let code = numbers.first(where: { $0.count == 6 }) ?? numbers.first { return code }
-        // « G-123456 » (Google) reste tel quel.
-        return matches(#"\b[A-Z0-9]{1,4}-\d{4,8}\b"#).first
+
+        // 1. Les mots qui annoncent un code (hors code promo, code postal…).
+        let anchors: [NSRange] = (anchorPattern?.matches(in: text, range: whole) ?? []).map(\.range).filter { range in
+            let word = ns.substring(with: range).lowercased()
+            guard word.hasPrefix("code") else { return true }
+            let after = following(range.upperBound).trimmingCharacters(in: .whitespaces)
+            if unrelatedAfter.contains(where: { after.hasPrefix($0 + " ") || after.hasPrefix($0 + ":") || after == $0
+                || after.hasPrefix($0 + ".") || after.hasPrefix($0 + ",") || after.hasPrefix($0 + "\n") }) { return false }
+            return !unrelatedBefore.contains(lastWord(before: range.location).trimmingCharacters(in: .punctuationCharacters))
+        }
+        guard !anchors.isEmpty else { return nil }
+
+        // 2. Les nombres qui ont la forme d'un code.
+        struct Candidate { var range: NSRange; var code: String }
+        var candidates: [Candidate] = []
+        func collect(_ pattern: String, _ build: (NSTextCheckingResult) -> String) {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
+            for match in regex.matches(in: text, range: whole)
+            where !candidates.contains(where: { NSIntersectionRange($0.range, match.range).length > 0 }) {
+                candidates.append(Candidate(range: match.range, code: build(match)))
+            }
+        }
+        // « G-123456 » (Google) : on garde les chiffres.
+        collect(#"(?<![\p{L}\d-])[A-Z]{1,3}-(\d{4,8})(?![\p{L}\d]|[-/.,:]\d)"#) { ns.substring(with: $0.range(at: 1)) }
+        // « 123-456 » ou « 123 456 ».
+        collect(#"(?<![\p{L}\d€$£,./#:+_=-])(?<!\d[ ,.])(\d{3})[- ](\d{3})(?![\p{L}\d%€$£/:_]|[ ,.\-]\d)"#) {
+            ns.substring(with: $0.range(at: 1)) + ns.substring(with: $0.range(at: 2))
+        }
+        // « 482913 ».
+        collect(#"(?<![\p{L}\d€$£,./#:+_=&-])(?<!\d[ ,.])(\d{4,8})(?![\p{L}\d%€$£/:_]|[ ,.\-]\d|[,.][\p{L}\d])"#) {
+            ns.substring(with: $0.range(at: 1))
+        }
+
+        let plausible = candidates.filter { candidate in
+            let code = candidate.code
+            // Une année (« © 2026 », « novembre 2025 ») n'est pas un code.
+            if code.count == 4, let year = Int(code), (1900...2099).contains(year) { return false }
+            // Montant : « 1250 € », « € 1250 », « 1250 EUR ».
+            let before = ns.substring(with: NSRange(location: max(0, candidate.range.location - 2), length: min(2, candidate.range.location)))
+            if before.contains(where: { "€$£".contains($0) }) { return false }
+            let after = following(candidate.range.upperBound).trimmingCharacters(in: .whitespaces)
+            if after.hasPrefix("€") || after.hasPrefix("$") || after.hasPrefix("£") || after.hasPrefix("%") { return false }
+            let nextWord = after.split(whereSeparator: { !$0.isLetter }).first.map(String.init) ?? ""
+            if after.first?.isLetter == true, unitWords.contains(nextWord) { return false }
+            // Référence : « commande n° 482913 », « #482913 », « Tél 0612 ».
+            let previous = lastWord(before: candidate.range.location)
+            return !referenceWords.contains(previous) && !referenceWords.contains(previous.trimmingCharacters(in: .punctuationCharacters))
+        }
+
+        // 3. Le nombre le plus proche d'un mot-clé, à 40 caractères au plus ; à égalité, 6 chiffres.
+        func distance(_ candidate: Candidate) -> Int? {
+            anchors.compactMap { anchor -> Int? in
+                if anchor.upperBound <= candidate.range.location { return candidate.range.location - anchor.upperBound }
+                if candidate.range.upperBound <= anchor.location { return anchor.location - candidate.range.upperBound }
+                return nil
+            }.min()
+        }
+        let nearby = plausible.compactMap { candidate in distance(candidate).map { (candidate, $0) } }.filter { $0.1 <= 40 }
+        return nearby.min { lhs, rhs in
+            if lhs.1 != rhs.1 { return lhs.1 < rhs.1 }
+            return (lhs.0.code.count == 6 ? 0 : 1) < (rhs.0.code.count == 6 ? 0 : 1)
+        }?.0.code
     }
 }
