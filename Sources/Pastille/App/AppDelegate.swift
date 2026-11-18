@@ -134,21 +134,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func menuWillOpen(_ menu: NSMenu) {
         launchMenuItem?.state = LaunchAtLogin.isEnabled ? .on : .off
         updateMenuItem?.title = switch UpdateManager.shared.state {
-        case let .available(release): "Installer Pastille \(release.version)"
+        case let .available(release): "Installer Pastille \(release.version)…"
         case .installing: "Installation de la mise à jour…"
         case .checking: "Recherche de mises à jour…"
         default: "Rechercher les mises à jour…"
         }
     }
 
-    /// Mise à jour trouvée : on l'installe ; sinon on cherche, et le résultat s'affiche dans les Réglages.
+    /// Mise à jour disponible : la fenêtre avec les notes de version s'ouvre. Sinon on cherche,
+    /// et la fenêtre ne s'ouvre que si une nouvelle version existe (à jour : rien ne s'affiche).
     @objc private func updateMenuClicked() {
         let updates = UpdateManager.shared
-        if updates.available != nil {
-            updates.install()
-        } else {
-            updates.check()
-            openSettings()
+        switch updates.state {
+        case let .available(release), let .installing(release):
+            UpdateWindowController.shared.show(release)
+        default:
+            updates.check { UpdateWindowController.shared.show($0) }
         }
     }
 

@@ -10,6 +10,8 @@ struct AppRelease: Equatable {
     var archive: URL
     /// Signature Ed25519 de l'archive, faite avec la clé privée du développeur.
     var signature: URL
+    /// Notes de version (Markdown de la release GitHub).
+    var notes: String = ""
 }
 
 /// Cherche les nouvelles versions sur GitHub (au lancement puis toutes les 6 h) et les installe en un clic.
@@ -36,6 +38,8 @@ final class UpdateManager: ObservableObject {
     }
     private static let announcedVersionKey = "update.announcedVersion"
     private var timer: Timer?
+    /// Appelé une fois quand la recherche en cours trouve une nouvelle version.
+    private var onFound: ((AppRelease) -> Void)?
 
     var available: AppRelease? {
         if case let .available(release) = state { release } else { nil }
@@ -55,13 +59,16 @@ final class UpdateManager: ObservableObject {
         check()
     }
 
-    func check() {
+    /// Cherche une nouvelle version ; `found` n'est appelé que s'il y en a une.
+    func check(found: ((AppRelease) -> Void)? = nil) {
+        if let found { onFound = found }
         switch state {
         case .checking, .installing: return
         default: break
         }
         state = .checking
         Task {
+            defer { onFound = nil }
             do {
                 guard let release = try await Self.fetchLatest(),
                       Self.isNewer(release.version, than: Self.currentVersion) else {
@@ -69,6 +76,7 @@ final class UpdateManager: ObservableObject {
                     return
                 }
                 state = .available(release)
+                onFound?(release)
                 if UserDefaults.standard.string(forKey: Self.announcedVersionKey) != release.version {
                     UserDefaults.standard.set(release.version, forKey: Self.announcedVersionKey)
                     announced.send(release.version)
@@ -95,15 +103,6 @@ final class UpdateManager: ObservableObject {
                 state = .failed((error as? UpdateError)?.message ?? "Le téléchargement a échoué. Réessaie plus tard.")
             }
         }
-    }
-
-    /// Notes de la version trouvée, ou la liste des versions.
-    func openReleasePage() {
-        let page: URL? = switch state {
-        case let .available(release), let .installing(release): release.page
-        default: URL(string: "https://github.com/\(Self.repository)/releases")
-        }
-        if let page { NSWorkspace.shared.open(page) }
     }
 
     // MARK: - GitHub
@@ -134,7 +133,8 @@ final class UpdateManager: ObservableObject {
         }
         guard let archive = asset(endingWith: ".zip"), let signature = asset(endingWith: ".zip.sig") else { return nil }
         let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
-        return AppRelease(version: version, page: page, archive: archive, signature: signature)
+        return AppRelease(version: version, page: page, archive: archive, signature: signature,
+                          notes: json["body"] as? String ?? "")
     }
 
     /// « 0.10.0 » est plus récent que « 0.9.2 » ; « 1.0 » et « 1.0.0 » sont égales.

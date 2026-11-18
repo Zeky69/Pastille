@@ -33,6 +33,7 @@ import Testing
         let json: [String: Any] = [
             "tag_name": tag, "draft": draft, "prerelease": prerelease,
             "html_url": "https://github.com/Zeky69/Pastille/releases/tag/\(tag)", "assets": list,
+            "body": "## Corrections\n\n- Codes plus fiables",
         ]
         return try! JSONSerialization.data(withJSONObject: json)
     }
@@ -42,6 +43,7 @@ import Testing
         #expect(release.version == "0.2.0")
         #expect(release.archive.lastPathComponent == "Pastille-0.2.0.zip")
         #expect(release.signature.lastPathComponent == "Pastille-0.2.0.zip.sig")
+        #expect(release.notes == "## Corrections\n\n- Codes plus fiables")
     }
 
     @Test func ignoresUnusableReleases() {
@@ -189,5 +191,31 @@ struct PublishedReleaseTests {
         )
         #expect(FileManager.default.fileExists(atPath: app.appending(path: "Contents/MacOS/Pastille").path))
         #expect(FileManager.default.fileExists(atPath: app.appending(path: "Contents/Resources/NowPlaying.dylib").path))
+    }
+}
+
+/// Notes de version affichées dans la fenêtre de mise à jour.
+@Suite struct ReleaseNotesTests {
+    @Test func keepsWhatsNewAndDropsInstallInstructions() throws {
+        let notes = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("docs/releases/0.4.0.md"), encoding: .utf8)
+        let blocks = ReleaseNotes.blocks(from: notes)
+        #expect(blocks.first == .heading("Nouveautés"))
+        #expect(blocks.contains(.heading("Corrections")))
+        #expect(blocks.contains { if case .bullet = $0 { true } else { false } })
+        // « Mise à jour » et « Nouvelle installation » n'ont rien à faire là : on installe d'un clic.
+        #expect(!blocks.contains(.heading("Mise à jour")))
+        #expect(!blocks.contains(.heading("Nouvelle installation")))
+        #expect(!blocks.contains { if case .code = $0 { true } else { false } })
+    }
+
+    @Test func readsHeadingsBulletsAndParagraphs() {
+        let blocks = ReleaseNotes.blocks(from: "## Nouveautés\r\n\r\n- **Gras** et `code`\n* autre\nUne ligne\nqui continue\n\n1. Premier\n```\nxattr -dr\n```")
+        #expect(blocks == [
+            .heading("Nouveautés"), .bullet("**Gras** et `code`"), .bullet("autre"),
+            .paragraph("Une ligne qui continue"), .numbered(1, "Premier"), .code("xattr -dr"),
+        ])
+        #expect(ReleaseNotes.blocks(from: "").isEmpty)
     }
 }

@@ -138,9 +138,9 @@ private struct UpdateStatusRow: View {
 
     @ViewBuilder private var action: some View {
         switch updates.state {
-        case .available:
+        case let .available(release):
             HStack(spacing: 6) {
-                Button("Nouveautés") { updates.openReleasePage() }
+                Button("Nouveautés") { UpdateWindowController.shared.show(release) }
                 Button("Installer") { updates.install() }
                     .buttonStyle(.borderedProminent)
             }
